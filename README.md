@@ -26,3 +26,10 @@ This repository is a **development-phase MVP**. Core functionality is scoped acr
 ## 📄 License
 
 Private, internal use only until contract completion. Ownership and IP to be transferred upon project delivery.
+
+## Setup for your own firebase
+
+1. Go to firebase console and setup own project.
+2. Setup web app on firebase and replace your firebase SDK details with one in src/app/firebase.ts
+3. Run `firebase login`
+4. Run `firebase init`
