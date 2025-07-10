@@ -1,0 +1,8 @@
+@import "tailwindcss/preflight";
+@tailwind utilities;
+
+/* optional tiny helpers */
+@layer utilities {
+  .btn { @apply bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700; }
+  .input { @apply border rounded px-2 py-1 w-full; }
+}
