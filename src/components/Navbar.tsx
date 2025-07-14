@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { auth } from "@firebase";
 
 function NavLink({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
@@ -23,19 +24,38 @@ function NavLink({ href, label }: { href: string; label: string }) {
 }
 
 export default function Navbar() {
-  return (
-    <header className="border-b bg-white shadow-sm sticky top-0 z-50">
-      <nav className="container mx-auto flex flex-wrap items-center justify-between px-4 py-3">
-        <Link href="/" className="text-xl font-bold text-green-700">
-          CommunityEats
-        </Link>
-        <div className="flex space-x-2 mt-2 sm:mt-0">
-          <NavLink href="/" label="Home" />
-          <NavLink href="/listings" label="Listings" />
-          <NavLink href="/dashboard" label="Dashboard" />
-          <NavLink href="/login" label="Login" />
-        </div>
-      </nav>
-    </header>
-  );
+  const user = auth.currentUser;
+  if (user) {
+    return (
+      <header className="border-b bg-white shadow-sm sticky top-0 z-50">
+        <nav className="container mx-auto flex flex-wrap items-center justify-between px-4 py-3">
+          <Link href="/" className="text-xl font-bold text-green-700">
+            CommunityEats
+          </Link>
+          <div className="flex space-x-2 mt-2 sm:mt-0">
+            <NavLink href="/" label="Home" />
+            <NavLink href="/listings" label="Listings" />
+            <NavLink href="/dashboard" label="Dashboard" />
+            <NavLink href="/logout" label="Logout" />
+          </div>
+        </nav>
+      </header>
+    );
+  } else {
+    return (
+      <header className="border-b bg-white shadow-sm sticky top-0 z-50">
+        <nav className="container mx-auto flex flex-wrap items-center justify-between px-4 py-3">
+          <Link href="/" className="text-xl font-bold text-green-700">
+            CommunityEats
+          </Link>
+          <div className="flex space-x-2 mt-2 sm:mt-0">
+            <NavLink href="/" label="Home" />
+            <NavLink href="/listings" label="Listings" />
+            <NavLink href="/dashboard" label="Dashboard" />
+            <NavLink href="/login" label="Login" />
+          </div>
+        </nav>
+      </header>
+    );
+  }
 }
