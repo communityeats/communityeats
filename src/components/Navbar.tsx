@@ -46,9 +46,11 @@ export default function Navbar() {
         <div className="flex space-x-2 mt-2 sm:mt-0">
           <NavLink href="/" label="Home" />
           <NavLink href="/listings" label="Listings" />
-          <NavLink href="/dashboard" label="Dashboard" />
           {user ? (
-            <NavLink href="/logout" label="Logout" />
+            <>
+              <NavLink href="/dashboard" label="Dashboard" />
+              <NavLink href="/logout" label="Logout" />
+            </>
           ) : (
             <NavLink href="/login" label="Login" />
           )}
