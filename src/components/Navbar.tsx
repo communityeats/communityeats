@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { auth } from "@firebase";
+import { auth } from "@/lib/firebase/client";
 import { onAuthStateChanged, User } from "firebase/auth";
 
 function NavLink({ href, label }: { href: string; label: string }) {
