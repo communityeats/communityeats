@@ -1,11 +1,10 @@
 // app/api/v1/listings/upload-image/route.ts
 
 import { NextResponse } from 'next/server'
-import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage'
-import { getAuth, initAdmin } from '@/lib/firebase/admin'
+import { getAuth, getStorage, initAdmin } from '@/lib/firebase/admin'
 import { v4 as uuidv4 } from 'uuid'
 
-const admin = initAdmin() // Ensure initialized once
+initAdmin() // Ensure initialized once
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -30,16 +29,26 @@ export async function POST(req: Request) {
   }
 
   const bytes = await file.arrayBuffer()
-  const buffer = new Uint8Array(bytes)
+  const buffer = Buffer.from(bytes)
+  const filename = `${uuidv4()}_${file.name}`
+  const filePath = `listings/${uid}/${filename}`
 
-  const uniqueId = uuidv4()
-  const filename = `${uniqueId}_${file.name}`
-  const storage = getStorage();
-  const storageRef = ref(storage, `listings/${uid}/${filename}`)
+  const bucket = getStorage().bucket()
+  const fileRef = bucket.file(filePath)
 
   try {
-    await uploadBytes(storageRef, buffer)
-    const url = await getDownloadURL(storageRef)
+    await fileRef.save(buffer, {
+      metadata: {
+        contentType: file.type,
+      },
+    })
+
+    // Optional: make public or generate signed URL
+    const [url] = await fileRef.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    })
+
     return NextResponse.json({ id: filename, url })
   } catch (err) {
     console.error('Upload error:', err)
