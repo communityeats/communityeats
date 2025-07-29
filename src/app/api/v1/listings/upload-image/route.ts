@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const bytes = await file.arrayBuffer()
   const buffer = Buffer.from(bytes)
   const filename = `${uuidv4()}_${file.name}`
-  const filePath = `listings/${uid}/${filename}`
+  const filePath = `listings/${filename}`
 
   const bucket = getStorage().bucket()
   const fileRef = bucket.file(filePath)

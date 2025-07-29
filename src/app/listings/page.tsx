@@ -1,14 +1,38 @@
-// src/app/listings/page.tsx
-import Link from "next/link";
-import ListingCard from "@/components/ListingCard";
+'use client'
 
-const dummyListings = [
-  { id: "1", title: "Fresh Apples", imageURL: "/placeholder.png" },
-  { id: "2", title: "Bread Loaves", imageURL: "/placeholder.png" },
-  { id: "3", title: "Canned Beans", imageURL: "/placeholder.png" },
-];
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import ListingCard from '@/components/ListingCard'
+
+type Listing = {
+  id: string
+  title: string
+  thumbnail_url?: string
+}
 
 export default function ListingsPage() {
+  const [listings, setListings] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchListings = async () => {
+      try {
+        const res = await fetch('/api/v1/listings')
+        if (!res.ok) throw new Error('Failed to fetch listings')
+        const data = await res.json()
+        setListings(data)
+      } catch (err: any) {
+        console.error(err)
+        setError(err.message || 'Something went wrong')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchListings()
+  }, [])
+
   return (
     <section className="space-y-6">
       <header className="flex items-center justify-between">
@@ -21,21 +45,31 @@ export default function ListingsPage() {
         </Link>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {dummyListings.map((listing) => (
-          <ListingCard key={listing.id} listing={listing} />
-        ))}
-      </div>
-
-      {dummyListings.length === 0 && (
+      {loading ? (
+        <p className="text-center text-gray-500">Loading listings...</p>
+      ) : error ? (
+        <p className="text-center text-red-600">{error}</p>
+      ) : listings.length === 0 ? (
         <p className="text-center text-gray-600">
-          No listings yet. Be the first to{" "}
+          No listings yet. Be the first to{' '}
           <Link href="/listings/new" className="underline text-blue-600">
             create one
           </Link>
           !
         </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {listings.map((listing) => (
+            <ListingCard
+              key={listing.id}
+              listing={{
+                ...listing,
+                imageURL: listing.thumbnail_url || '/placeholder.png',
+              }}
+            />
+          ))}
+        </div>
       )}
     </section>
-  );
+  )
 }

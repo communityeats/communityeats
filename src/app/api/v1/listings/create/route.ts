@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
+import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
 
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
     const firestore = getFirestore()
 
     const listingDoc = {
+       id: uuidv4(),
       user_id: userId,
       title: data.title.toLowerCase(),
       description: data.description.toLowerCase(),
@@ -68,7 +70,10 @@ export async function POST(req: Request) {
       image_ids: data.image_ids,
       thumbnail_id: data.thumbnail_id,
       anonymous: Boolean(data.anonymous),
-      created_at: new Date().toISOString()
+      interested_users_uids: [],
+      status: 'available',
+      updated_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
     }
 
     const docRef = await firestore.collection('listings').add(listingDoc)

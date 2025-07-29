@@ -125,6 +125,7 @@ export default function NewListingPage() {
         suburb: formData.suburb.toLowerCase(),
         postcode: Number(formData.postcode),
       },
+      user_id: user.uid,
     }
 
     const listingRes = await fetch('/api/v1/listings/create', {
