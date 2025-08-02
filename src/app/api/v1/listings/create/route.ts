@@ -49,8 +49,10 @@ export async function POST(req: Request) {
 
     const firestore = getFirestore()
 
+    const docId = uuidv4()
+
     const listingDoc = {
-       id: uuidv4(),
+      id: docId,
       user_id: userId,
       title: data.title.toLowerCase(),
       description: data.description.toLowerCase(),
@@ -76,7 +78,8 @@ export async function POST(req: Request) {
       created_at: new Date().toISOString(),
     }
 
-    const docRef = await firestore.collection('listings').add(listingDoc)
+   const docRef = firestore.collection('listings').doc(docId);
+    await docRef.set(listingDoc);
     
 
     return NextResponse.json({ success: true, id: docRef.id }, { status: 201 })

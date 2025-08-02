@@ -1,11 +1,10 @@
-// src/app/listings/[id]/page.tsx
-type Props = { params: { id: string } };
+// ListingDetailPage.tsx
 
-export default function ListingDetail({ params }: Props) {
-  return (
-    <article>
-      <h2 className="text-xl font-semibold mb-2">Listing #{params.id}</h2>
-      <p>Description, image, and claim button will go here.</p>
-    </article>
-  );
+import ListingDetailClient from './ListingDetailClient'
+
+export const dynamic = 'force-dynamic'
+
+export default function ListingDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params
+  return <ListingDetailClient id={id} />
 }
