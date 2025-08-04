@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { initAdmin, getFirestore, getStorage } from '@/lib/firebase/admin'
+import { getAuth } from 'firebase-admin/auth'
 
 initAdmin()
 
@@ -17,8 +18,22 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    params = await params // Ensure params are awaited
-    const id = await params.id // Ensure id is awaited
+    const id = params.id
+
+    const authHeader = _req.headers.get('authorization')
+    const token = authHeader?.split('Bearer ')[1]
+
+    let userId: string | null = null
+
+    if (token) {
+      try {
+        const decodedToken = await getAuth().verifyIdToken(token)
+        userId = decodedToken.uid
+      } catch (err) {
+        console.warn('Failed to verify token:', err)
+      }
+    }
+
     console.log('Fetching listing detail for ID:', id)
     const firestore = getFirestore()
     const docRef = firestore.collection('listings').doc(id)
@@ -55,12 +70,14 @@ export async function GET(
       interested_user_ids, // remove
       ...publicData
     } = data
+    console.log("user_id:", userId, "interested_user_ids:", interestedUserIds)
 
     return NextResponse.json({
       id: docSnap.id,
       ...publicData,
       image_urls: image_urls.filter(Boolean),
       interested_user_count: interestedUserIds.length,
+      has_registered_interest: userId ? interestedUserIds.includes(userId) : false,
     })
   } catch (err) {
     console.error('Error fetching listing detail:', err)

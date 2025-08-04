@@ -26,6 +26,7 @@ type Listing = {
   }
   status?: string
   created_at?: string
+  has_registered?: boolean // <-- Add this line
 }
 
 export default function ListingDetailClient({ id }: { id: string }) {
@@ -33,6 +34,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [claiming, setClaiming] = useState(false)
+  const [hasRegistered, setHasRegistered] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const [userToken, setUserToken] = useState<string | null>(null)
   const router = useRouter()
 
@@ -51,9 +54,20 @@ export default function ListingDetailClient({ id }: { id: string }) {
   useEffect(() => {
     const fetchListing = async () => {
       try {
-        const res = await fetch(`/api/v1/listings/${id}`)
+        const res = await fetch(`/api/v1/listings/${id}`,
+          {
+            headers: {
+              Authorization: userToken ? `Bearer ${userToken}` : '',
+            },
+          }
+        )
         const data = await res.json()
-        if (res.ok) setListing(data)
+        if (res.ok) {
+          setListing(data)
+          if (data.has_registered_interest) {
+            setHasRegistered(true)
+          }
+        }
         else setError(data.error || 'Failed to load listing')
       } catch {
         setError('Failed to fetch listing')
@@ -62,7 +76,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
       }
     }
     fetchListing()
-  }, [id])
+  }, [id, userToken])
 
   const claimListing = async () => {
     setError(null)
@@ -85,7 +99,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
       if (!res.ok) {
         setError(data.error || 'Failed to claim listing')
       } else {
-        router.refresh()
+        setHasRegistered(true)
+        setSuccessMessage('Successfully registered interest')
       }
     } catch {
       setError('Failed to send claim request')
@@ -169,13 +184,25 @@ export default function ListingDetailClient({ id }: { id: string }) {
               <p>{interested_user_count} user{interested_user_count !== 1 && 's'} interested</p>
             </section>
 
-            <button
-              onClick={claimListing}
-              disabled={claiming}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
-            >
-              {claiming ? 'Registering Interest...' : 'Register Interest'}
-            </button>
+            {hasRegistered ? (
+              <>
+                <button
+                  onClick={() => router.push(`/claims`)}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition"
+                >
+                  Message Owner
+                </button>
+                {successMessage && <p className="text-green-600 text-sm mt-2">{successMessage}</p>}
+              </>
+            ) : (
+              <button
+                onClick={claimListing}
+                disabled={claiming}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+              >
+                {claiming ? 'Registering Interest...' : 'Register Interest'}
+              </button>
+            )}
           </aside>
         </div>
       </div>
