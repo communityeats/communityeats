@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Get redirect param or fallback to dashboard
+  const redirect = searchParams.get("redirect") || "/dashboard";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +22,7 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard");
+      router.push(redirect);
     } catch (err: any) {
       setError(err.message);
     }
@@ -74,7 +79,10 @@ export default function LoginPage() {
 
           <p className="mt-6 text-sm text-center text-gray-600">
             Don&apos;t have an account?{" "}
-            <a href="/register" className="text-green-600 hover:underline">
+            <a
+              href={`/register?redirect=${encodeURIComponent(redirect)}`}
+              className="text-green-600 hover:underline"
+            >
               Register
             </a>
           </p>

@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
-import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/dashboard";
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +22,7 @@ export default function RegisterPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
-      router.push("/dashboard");
+      router.push(redirect);
     } catch (err: any) {
       setError(err.message);
     }
@@ -91,7 +94,10 @@ export default function RegisterPage() {
 
           <p className="mt-6 text-sm text-center text-gray-600">
             Already have an account?{" "}
-            <a href="/login" className="text-green-600 hover:underline">
+            <a
+              href={`/login?redirect=${encodeURIComponent(redirect)}`}
+              className="text-green-600 hover:underline"
+            >
               Login
             </a>
           </p>

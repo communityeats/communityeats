@@ -1,8 +1,14 @@
-// ListingDetailClient.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+} from 'firebase/auth'
+import { auth } from '@/lib/firebase/client'
 
 type Listing = {
   id: string
@@ -27,7 +33,20 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [claiming, setClaiming] = useState(false)
+  const [userToken, setUserToken] = useState<string | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const token = await user.getIdToken()
+        setUserToken(token)
+      } else {
+        setUserToken(null)
+      }
+    })
+    return () => unsubscribe()
+  }, [])
 
   useEffect(() => {
     const fetchListing = async () => {
@@ -46,14 +65,28 @@ export default function ListingDetailClient({ id }: { id: string }) {
   }, [id])
 
   const claimListing = async () => {
-    setClaiming(true)
     setError(null)
 
+    if (!userToken) {
+      router.push(`/login?redirect=/listings/${id}`)
+    }
+    
+    setClaiming(true)
+
     try {
-      const res = await fetch(`/api/listings/${id}/claim`, { method: 'POST' })
+      const res = await fetch(`/api/v1/listings/${id}/claim`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+        },
+      })
+
       const data = await res.json()
-      if (!res.ok) setError(data.error || 'Failed to claim listing')
-      else router.refresh()
+      if (!res.ok) {
+        setError(data.error || 'Failed to claim listing')
+      } else {
+        router.refresh()
+      }
     } catch {
       setError('Failed to send claim request')
     } finally {
@@ -90,7 +123,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
       <div className="flex-1 bg-white py-8">
         <div className="max-w-5xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-          {/* Left Column: Images + Description */}
+          {/* Left Column */}
           <div className="flex flex-col space-y-8 lg:col-span-2">
             {image_urls?.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -111,7 +144,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
             </section>
           </div>
 
-          {/* Right Column: Metadata & Action */}
+          {/* Right Column */}
           <aside className="space-y-6">
             <section className="space-y-2">
               <h2 className="text-xl font-semibold text-gray-800">Details</h2>
@@ -144,7 +177,6 @@ export default function ListingDetailClient({ id }: { id: string }) {
               {claiming ? 'Registering Interest...' : 'Register Interest'}
             </button>
           </aside>
-
         </div>
       </div>
     </div>
