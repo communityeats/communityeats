@@ -27,6 +27,7 @@ type Listing = {
   status?: string
   created_at?: string
   has_registered?: boolean // <-- Add this line
+  user_id?: string // <-- Add this line
 }
 
 export default function ListingDetailClient({ id }: { id: string }) {
@@ -37,6 +38,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [hasRegistered, setHasRegistered] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [userToken, setUserToken] = useState<string | null>(null)
+  const [currentUid, setCurrentUid] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -44,8 +46,10 @@ export default function ListingDetailClient({ id }: { id: string }) {
       if (user) {
         const token = await user.getIdToken()
         setUserToken(token)
+        setCurrentUid(user.uid)
       } else {
         setUserToken(null)
+        setCurrentUid(null)
       }
     })
     return () => unsubscribe()
@@ -123,6 +127,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
     location,
     status,
     created_at,
+    user_id,
   } = listing
 
   return (
@@ -184,7 +189,14 @@ export default function ListingDetailClient({ id }: { id: string }) {
               <p>{interested_user_count} user{interested_user_count !== 1 && 's'} interested</p>
             </section>
 
-            {hasRegistered ? (
+            {user_id === currentUid ? (
+              <button
+                onClick={() => router.push(`/dashboard/listings/${id}`)}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition"
+              >
+                Manage Listing
+              </button>
+            ) : hasRegistered ? (
               <>
                 <button
                   onClick={() => router.push(`/claims`)}

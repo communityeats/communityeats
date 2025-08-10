@@ -66,18 +66,24 @@ export async function GET(
     )
 
     const {
-      user_id, // remove
-      interested_user_ids, // remove
+      interested_user_ids, // legacy remove
       ...publicData
     } = data
-    console.log("user_id:", userId, "interested_user_ids:", interestedUserIds)
+
+    const ownerUserId = data.user_id as string | undefined
+    const isOwner = ownerUserId && userId === ownerUserId
+    const interested_user_count = interestedUserIds.filter((uid: string) => uid !== ownerUserId).length
+    const has_registered_interest = userId ? (interestedUserIds.includes(userId) && !isOwner) : false
+
+    console.log("owner_user_id:", ownerUserId, "interested_users_uids:", interestedUserIds)
 
     return NextResponse.json({
       id: docSnap.id,
       ...publicData,
+      user_id: ownerUserId,
       image_urls: image_urls.filter(Boolean),
-      interested_user_count: interestedUserIds.length,
-      has_registered_interest: userId ? interestedUserIds.includes(userId) : false,
+      interested_user_count,
+      has_registered_interest,
     })
   } catch (err) {
     console.error('Error fetching listing detail:', err)

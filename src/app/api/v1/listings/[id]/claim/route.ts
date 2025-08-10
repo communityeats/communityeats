@@ -10,7 +10,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    console.log('Claiming listing with ID:', await params.id)
+    const listingId = params.id
+    console.log('Claiming listing with ID:', listingId)
+
     const authHeader = req.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -20,8 +22,6 @@ export async function POST(
     const decodedToken = await getAuth().verifyIdToken(idToken)
     const userId = decodedToken.uid
 
-    params = await params // Ensure params are awaited
-    const listingId = await params.id
     const firestore = getFirestore()
     const listingRef = firestore.collection('listings').doc(listingId)
 
@@ -31,13 +31,19 @@ export async function POST(
         throw new Error('Listing not found')
       }
 
-      const data = docSnap.data()
-      const interestedUsers = Array.isArray(data?.interested_users_uids)
+      const data = docSnap.data() as Record<string, any> | undefined
+      const ownerId: string | undefined = data?.user_id
+      const interestedUsers: string[] = Array.isArray(data?.interested_users_uids)
         ? data!.interested_users_uids
         : []
 
+      // Prevent a user from being interested in their own listing
+      if (ownerId && ownerId === userId) {
+        throw new Error('Cannot register interest in own listing')
+      }
+
+      // If already marked interested, no-op
       if (interestedUsers.includes(userId)) {
-        // Already claimed/interested
         return
       }
 
@@ -50,7 +56,13 @@ export async function POST(
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err: any) {
     console.error('Error claiming listing:', err)
-    const status = err.message === 'Listing not found' ? 404 : 500
-    return NextResponse.json({ error: err.message }, { status })
+    const message = String(err?.message || 'Internal error')
+    const status =
+      message === 'Listing not found'
+        ? 404
+        : message === 'Cannot register interest in own listing'
+        ? 400
+        : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }
