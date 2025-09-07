@@ -14,17 +14,48 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+      // Update the Firebase Auth profile with the display name
       await updateProfile(userCredential.user, { displayName: name });
+
+      // Get an ID token for the authenticated user
+      const idToken = await userCredential.user.getIdToken();
+
+      // Call our API to upsert the user document (name + email)
+      const res = await fetch('/api/v1/account/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ name, email }),
+      });
+
+      if (!res.ok) {
+        // Try to surface a friendly error from the API
+        let message = 'Failed to save user profile';
+        try {
+          const data = await res.json();
+          if (data?.error) message = data.error;
+        } catch {}
+        throw new Error(message);
+      }
+
+      // Success — proceed to the intended page
       router.push(redirect);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -86,9 +117,10 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-green-600 text-white rounded-md text-base sm:text-sm md:text-base hover:bg-green-700 transition"
+              disabled={loading}
+              className="w-full py-3 px-4 bg-green-600 text-white rounded-md text-base sm:text-sm md:text-base hover:bg-green-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Register
+              {loading ? 'Creating account…' : 'Register'}
             </button>
           </form>
 
