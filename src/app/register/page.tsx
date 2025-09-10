@@ -52,10 +52,12 @@ export default function RegisterPage() {
 
       // Success — proceed to the intended page
       router.push(redirect);
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unknown error occurred");
+      }
     }
   };
 
