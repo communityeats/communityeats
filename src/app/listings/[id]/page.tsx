@@ -1,4 +1,6 @@
 // src/app/listings/[id]/page.tsx
+import ListingDetailClient from './ListingDetailClient'
+export const dynamic = 'force-dynamic'
 type Props = {
   params: Promise<{ id: string }>;
   // If you may use it later, include this too:
@@ -8,10 +10,5 @@ type Props = {
 export default async function ListingDetail({ params }: Props) {
   const { id } = await params;
 
-  return (
-    <article>
-      <h2 className="text-xl font-semibold mb-2">Listing #{id}</h2>
-      <p>Description, image, and claim button will go here.</p>
-    </article>
-  );
+  return <ListingDetailClient id={id} />
 }
