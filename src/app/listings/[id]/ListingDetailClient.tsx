@@ -3,10 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
+  onAuthStateChanged
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
 

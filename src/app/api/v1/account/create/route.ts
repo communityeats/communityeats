@@ -78,11 +78,14 @@ export async function POST(req: NextRequest) {
       },
       { status: existing.exists ? 200 : 201 }
     )
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error creating/updating user:', err)
-    return NextResponse.json(
-      { error: String(err?.message || 'Internal error') },
-      { status: 500 }
-    )
+
+    let message = 'Internal error'
+    if (err instanceof Error) {
+      message = err.message
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

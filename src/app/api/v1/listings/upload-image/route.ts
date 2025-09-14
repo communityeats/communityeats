@@ -1,7 +1,7 @@
 // app/api/v1/listings/upload-image/route.ts
 
 import { NextResponse } from 'next/server'
-import { getAuth, getStorage, initAdmin } from '@/lib/firebase/admin'
+import { getStorage, initAdmin } from '@/lib/firebase/admin'
 import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
@@ -20,11 +20,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing token' }, { status: 401 })
   }
 
-  let uid = ''
   try {
-    const decoded = await getAuth().verifyIdToken(token)
-    uid = decoded.uid
+    //const decoded = await getAuth().verifyIdToken(token)
+    //uid = decoded.uid
   } catch (err) {
+    console.error('Token verification error:', err)
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
   }
 

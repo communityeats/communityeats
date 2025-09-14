@@ -22,9 +22,9 @@ export default function ListingsPage() {
         if (!res.ok) throw new Error('Failed to fetch listings')
         const data = await res.json()
         setListings(data)
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err)
-        setError(err.message || 'Something went wrong')
+        setError((err as Error).message || 'Something went wrong')
       } finally {
         setLoading(false)
       }

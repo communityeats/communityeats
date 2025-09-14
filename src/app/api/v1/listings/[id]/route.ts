@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { initAdmin, getFirestore, getStorage } from '@/lib/firebase/admin'
 import { getAuth } from 'firebase-admin/auth'
+import type { ListingDoc } from '@/lib/types/listing'
 
 initAdmin()
 
@@ -8,23 +9,22 @@ const generateImageURL = async (imageId: string) => {
   const filePath = `listings/${imageId}`
   const [url] = await getStorage().bucket().file(filePath).getSignedUrl({
     action: 'read',
-    expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    expires: Date.now() + 60 * 60 * 1000,
   })
   return url
 }
 
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }   // <- NOTE: Promise
 ) {
-  try {
-    const id = params.id
+  const { id } = await params                         // <- await it
 
-    const authHeader = _req.headers.get('authorization')
+  try {
+    const authHeader = req.headers.get('authorization')
     const token = authHeader?.split('Bearer ')[1]
 
     let userId: string | null = null
-
     if (token) {
       try {
         const decodedToken = await getAuth().verifyIdToken(token)
@@ -34,54 +34,40 @@ export async function GET(
       }
     }
 
-    console.log('Fetching listing detail for ID:', id)
     const firestore = getFirestore()
-    const docRef = firestore.collection('listings').doc(id)
-    const docSnap = await docRef.get()
-    console.log('Document snapshot:', docSnap.exists, docSnap.id)
-
+    const docSnap = await firestore.collection('listings').doc(id).get()
     if (!docSnap.exists) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    const data = docSnap.data()
-    if (!data) {
-      return NextResponse.json({ error: 'No data for listing' }, { status: 500 })
-    }
-
+    const data = docSnap.data() as ListingDoc
     const imageIds = Array.isArray(data.image_ids) ? data.image_ids : []
     const interestedUserIds = Array.isArray(data.interested_users_uids)
       ? data.interested_users_uids
       : []
 
-    const image_urls = await Promise.all(
-      imageIds.map(async (imageId: string) => {
-        try {
-          return await generateImageURL(imageId)
-        } catch (err) {
-          console.warn(`Failed to generate URL for image ${imageId}`, err)
-          return null
-        }
-      })
-    )
-
-    const {
-      interested_user_ids, // legacy remove
-      ...publicData
-    } = data
+    const image_urls = (
+      await Promise.all(
+        imageIds.map(async (imageId) => {
+          try { return await generateImageURL(imageId) }
+          catch (err) { console.warn(`URL gen failed for ${imageId}`, err); return null }
+        })
+      )
+    ).filter(Boolean) as string[]
 
     const ownerUserId = data.user_id as string | undefined
     const isOwner = ownerUserId && userId === ownerUserId
-    const interested_user_count = interestedUserIds.filter((uid: string) => uid !== ownerUserId).length
-    const has_registered_interest = userId ? (interestedUserIds.includes(userId) && !isOwner) : false
+    const interested_user_count = interestedUserIds.filter((u) => u !== ownerUserId).length
+    const has_registered_interest = !!userId && interestedUserIds.includes(userId) && !isOwner
 
-    console.log("owner_user_id:", ownerUserId, "interested_users_uids:", interestedUserIds)
+    // If you want to strip fields without unused-var lint:
+    const { interested_users_uids, user_id, ...publicData } = data
+    void interested_users_uids; void user_id
 
     return NextResponse.json({
-      id: docSnap.id,
       ...publicData,
       user_id: ownerUserId,
-      image_urls: image_urls.filter(Boolean),
+      image_urls,
       interested_user_count,
       has_registered_interest,
     })

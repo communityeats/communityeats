@@ -83,8 +83,16 @@ export async function POST(req: Request) {
     
 
     return NextResponse.json({ success: true, id: docRef.id }, { status: 201 })
-  } catch (err: any) {
-    console.error(err)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  } catch (err: unknown) {
+    console.error('Error creating listing:', err)
+
+    let message = 'Internal error'
+    if (err instanceof Error) {
+      message = err.message
+    } else if (typeof err === 'string') {
+      message = err
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -1,48 +1,52 @@
-
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import type {
+  ListingDoc,
+  ListingLocation,
+  ListingCategory,
+  ExchangeType,
+  ListingStatus,
+} from '@/lib/types/listing'
 
-// Minimal listing shape returned by GET /api/v1/listing/[id]
-type Listing = {
-  id: string
+// ---------- Local edit-form state (UI-friendly)
+type EditFormState = {
   title: string
   description: string
-  category: string
-  exchange_type: string
-  status?: 'available' | 'claimed' | 'closed'
-  created_at?: string | number | Date
-  image_urls?: string[]
-  thumbnail_url?: string | null
-  user_id?: string
-  location?: {
-    country?: string
-    state?: string
-    suburb?: string
-    postcode?: number | string
+  category: ListingCategory | ''          // allow empty while editing
+  exchange_type: ExchangeType | ''
+  status: ListingStatus | ''              // allow empty while editing
+  location: {
+    country: string
+    state: string
+    suburb: string
+    postcode: string                      // keep as string in inputs
   }
-  interested_user_count?: number
-  has_registered_interest?: boolean
-  interested_user_ids?: string[] // (owner-only when backend exposes)
 }
 
-type PatchPayload = Partial<Pick<
-  Listing,
-  'title' | 'description' | 'category' | 'exchange_type' | 'status'
->> & {
-  location?: Listing['location']
-}
+type PatchPayload = Partial<
+  Pick<
+    ListingDoc,
+    | 'title'
+    | 'description'
+    | 'category'
+    | 'exchange_type'
+    | 'status'
+    | 'country'
+    | 'location'
+  >
+>
 
 // ---- API helpers
-async function fetchListingDetail(id: string, token: string) {
+async function fetchListingDetail(id: string, token: string): Promise<ListingDoc> {
   const res = await fetch(`/api/v1/listings/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Failed to fetch listing ${id}`)
+    throw new Error((body as { error?: string }).error || `Failed to fetch listing ${id}`)
   }
   return res.json()
 }
@@ -59,7 +63,7 @@ async function updateListing(token: string, id: string, payload: PatchPayload) {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || 'Failed to update listing.')
+    throw new Error((body as { error?: string }).error || 'Failed to update listing.')
   }
   return res.json()
 }
@@ -76,16 +80,16 @@ export default function ManageListingPage() {
 
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
-  const [listing, setListing] = useState<Listing | null>(null)
+  const [listing, setListing] = useState<ListingDoc | null>(null)
 
   // Edit form
   const [saving, setSaving] = useState(false)
-  const [editForm, setEditForm] = useState<PatchPayload>({
+  const [editForm, setEditForm] = useState<EditFormState>({
     title: '',
     description: '',
     category: '',
     exchange_type: '',
-    status: 'available',
+    status: '',
     location: { country: '', state: '', suburb: '', postcode: '' },
   })
 
@@ -99,9 +103,10 @@ export default function ManageListingPage() {
         const mod = await import('firebase/auth').catch(() => null)
         if (!mod) {
           // fallback storage token only
-          const local = typeof window !== 'undefined'
-            ? (localStorage.getItem('idToken') || localStorage.getItem('token'))
-            : null
+          const local =
+            typeof window !== 'undefined'
+              ? localStorage.getItem('idToken') || localStorage.getItem('token')
+              : null
           if (!cancelled) {
             setIdToken(local)
             setAuthInitError(local ? null : 'Missing token')
@@ -129,30 +134,41 @@ export default function ManageListingPage() {
               setIdToken(fresh)
               setUserUid(user.uid)
               setAuthInitError(null)
-            } catch (err: any) {
-              setAuthInitError(err?.message || 'Failed to init auth')
+            } catch (err: unknown) {
+              setAuthInitError((err as { message?: string })?.message || 'Failed to init auth')
               setIdToken(null)
               setUserUid(null)
             }
           }
         })
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setAuthInitError(err?.message || 'Initialization error')
+          setAuthInitError((err as { message?: string })?.message || 'Initialization error')
           setIdToken(null)
           setUserUid(null)
         }
       }
     }
 
-    init()
-    return () => { cancelled = true; if (unsub) unsub() }
+    void init()
+    return () => {
+      cancelled = true
+      if (unsub) unsub()
+    }
   }, [])
+
+  // Prepare a possibly resolvable image URL if you have a known scheme.
+  const thumbnailUrl = useMemo(() => {
+    if (!listing?.thumbnail_id) return null
+    // If your backend serves files by id, replace below with the correct path.
+    // return `/api/v1/files/${listing.thumbnail_id}`
+    return null
+  }, [listing])
 
   // Load listing detail once we have a token
   useEffect(() => {
     let mounted = true
-    ;(async () => {
+    const load = async () => {
       if (!listingId) return
       setLoading(true)
       setError(null)
@@ -177,23 +193,29 @@ export default function ManageListingPage() {
         setEditForm({
           title: detail.title || '',
           description: detail.description || '',
-          category: detail.category || '',
-          exchange_type: detail.exchange_type || '',
-          status: (detail.status as any) || 'available',
+          category: (detail.category ?? '') as ListingCategory | '',
+          exchange_type: (detail.exchange_type ?? '') as ExchangeType | '',
+          status: (detail.status ?? '') as ListingStatus | '',
           location: {
             country: detail.location?.country || '',
             state: detail.location?.state || '',
             suburb: detail.location?.suburb || '',
-            postcode: detail.location?.postcode?.toString?.() || '',
+            postcode:
+              typeof detail.location?.postcode === 'number'
+                ? String(detail.location.postcode)
+                : '',
           },
         })
-      } catch (e: any) {
-        if (mounted) setError(e?.message || 'Failed to load listing')
+      } catch (e: unknown) {
+        if (mounted) setError(e instanceof Error ? e.message : 'Failed to load listing')
       } finally {
         if (mounted) setLoading(false)
       }
-    })()
-    return () => { mounted = false }
+    }
+    void load()
+    return () => {
+      mounted = false
+    }
   }, [listingId, idToken, authInitError, userUid])
 
   const handleEditChange = (
@@ -201,10 +223,13 @@ export default function ManageListingPage() {
   ) => {
     const { name, value } = e.target
     if (name.startsWith('location.')) {
-      const key = name.split('.')[1] as keyof NonNullable<PatchPayload['location']>
-      setEditForm(prev => ({ ...prev, location: { ...(prev.location || {}), [key]: value } }))
+      const key = name.split('.')[1] as keyof ListingLocation
+      setEditForm((prev) => ({
+        ...prev,
+        location: { ...prev.location, [key]: value } as EditFormState['location'],
+      }))
     } else {
-      setEditForm(prev => ({ ...prev, [name]: value }))
+      setEditForm((prev) => ({ ...prev, [name]: value }))
     }
   }
 
@@ -215,37 +240,67 @@ export default function ManageListingPage() {
     try {
       if (!idToken) throw new Error('You must be signed in to edit a listing.')
 
+      // Coerce postcode to number iff present and numeric
+      const postcodeNum =
+        editForm.location.postcode.trim() !== '' ? Number(editForm.location.postcode) : undefined
+      if (
+        postcodeNum !== undefined &&
+        (Number.isNaN(postcodeNum) || !Number.isFinite(postcodeNum))
+      ) {
+        throw new Error('Postcode must be a number.')
+      }
+
+      const normalizedLocation: ListingLocation | undefined =
+        editForm.location.country ||
+        editForm.location.state ||
+        editForm.location.suburb ||
+        editForm.location.postcode
+          ? {
+              country: (editForm.location.country || '').toLowerCase(),
+              state: (editForm.location.state || '').toLowerCase(),
+              suburb: (editForm.location.suburb || '').toLowerCase(),
+              // If postcode omitted, fall back to previous value to satisfy required field on server.
+              postcode:
+                postcodeNum ??
+                (typeof listing.location?.postcode === 'number'
+                  ? listing.location.postcode
+                  : 0),
+            }
+          : undefined
+
       const payload: PatchPayload = {
         title: (editForm.title || '').toLowerCase(),
         description: (editForm.description || '').toLowerCase(),
-        category: editForm.category || '',
-        exchange_type: editForm.exchange_type || '',
-        status: (editForm.status as any) || 'available',
-        location: {
-          country: (editForm.location?.country || '').toLowerCase(),
-          state: (editForm.location?.state || '').toLowerCase(),
-          suburb: (editForm.location?.suburb || '').toLowerCase(),
-          postcode: editForm.location?.postcode ? Number(editForm.location.postcode) : undefined,
-        },
+        category: editForm.category || undefined,
+        exchange_type: editForm.exchange_type || undefined,
+        status: editForm.status || undefined,
+        // Keep top-level country in sync with location.country if provided
+        country: normalizedLocation?.country,
+        location: normalizedLocation,
       }
 
       await updateListing(idToken, listingId, payload)
 
       // Optimistic update locally
-      setListing(prev => prev ? {
-        ...prev,
-        ...payload,
-        location: { ...prev.location, ...payload.location },
-      } : prev)
-    } catch (e: any) {
-      setError(e?.message || 'Failed to save changes')
+      setListing((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...payload,
+              location: payload.location ? payload.location : prev.location,
+              country: payload.country ?? prev.country,
+            }
+          : prev
+      )
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save changes')
     } finally {
       setSaving(false)
     }
   }
 
-  const interestedCount = listing?.interested_user_count ?? 0
-  const interestedIds = listing?.interested_user_ids || []
+  const interestedIds = listing?.interested_users_uids ?? []
+  const interestedCount = interestedIds.length
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -271,23 +326,29 @@ export default function ManageListingPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="border rounded p-4">
               <h2 className="text-lg font-semibold mb-3">Details</h2>
-              {listing.image_urls?.length ? (
+
+              {thumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={listing.image_urls[0] as string}
+                  src={thumbnailUrl}
                   alt={listing.title}
                   className="w-full h-48 object-cover rounded mb-3"
                 />
               ) : null}
+
               <div className="text-sm text-gray-600">
-                <div><span className="font-medium text-gray-800">Listing ID:</span> {listing.id}</div>
+                <div>
+                  <span className="font-medium text-gray-800">Listing ID:</span> {listing.id}
+                </div>
                 {listing.location ? (
                   <div className="mt-1">
                     <span className="font-medium text-gray-800">Location:</span>{' '}
                     {[listing.location.suburb, listing.location.state, listing.location.country]
                       .filter(Boolean)
                       .join(', ')}
-                    {listing.location.postcode ? ` ${listing.location.postcode}` : ''}
+                    {typeof listing.location.postcode === 'number'
+                      ? ` ${listing.location.postcode}`
+                      : ''}
                   </div>
                 ) : null}
               </div>
@@ -300,7 +361,7 @@ export default function ManageListingPage() {
                   <label className="block text-sm font-medium mb-1">Title</label>
                   <input
                     name="title"
-                    value={editForm.title || ''}
+                    value={editForm.title}
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                     placeholder="Title"
@@ -311,7 +372,7 @@ export default function ManageListingPage() {
                   <label className="block text-sm font-medium mb-1">Description</label>
                   <textarea
                     name="description"
-                    value={editForm.description || ''}
+                    value={editForm.description}
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                     rows={4}
@@ -323,14 +384,12 @@ export default function ManageListingPage() {
                   <label className="block text-sm font-medium mb-1">Category</label>
                   <select
                     name="category"
-                    value={editForm.category || ''}
+                    value={editForm.category}
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Select Category</option>
-                    <option value="home">home</option>
                     <option value="share">share</option>
-                    <option value="coop">coop</option>
                   </select>
                 </div>
 
@@ -338,14 +397,12 @@ export default function ManageListingPage() {
                   <label className="block text-sm font-medium mb-1">Exchange Type</label>
                   <select
                     name="exchange_type"
-                    value={editForm.exchange_type || ''}
+                    value={editForm.exchange_type}
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Select Exchange Type</option>
                     <option value="swap">swap</option>
-                    <option value="gift">gift</option>
-                    <option value="pay">pay</option>
                   </select>
                 </div>
 
@@ -353,13 +410,11 @@ export default function ManageListingPage() {
                   <label className="block text-sm font-medium mb-1">Status</label>
                   <select
                     name="status"
-                    value={(editForm.status as string) || 'available'}
+                    value={editForm.status || 'available'}
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                   >
                     <option value="available">available</option>
-                    <option value="claimed">claimed</option>
-                    <option value="closed">closed</option>
                   </select>
                 </div>
 
@@ -368,31 +423,32 @@ export default function ManageListingPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <input
                       name="location.country"
-                      value={editForm.location?.country || ''}
+                      value={editForm.location.country}
                       onChange={handleEditChange}
                       className="p-2 border rounded"
                       placeholder="Country"
                     />
                     <input
                       name="location.state"
-                      value={editForm.location?.state || ''}
+                      value={editForm.location.state}
                       onChange={handleEditChange}
                       className="p-2 border rounded"
                       placeholder="State"
                     />
                     <input
                       name="location.suburb"
-                      value={editForm.location?.suburb || ''}
+                      value={editForm.location.suburb}
                       onChange={handleEditChange}
                       className="p-2 border rounded"
                       placeholder="Suburb"
                     />
                     <input
                       name="location.postcode"
-                      value={editForm.location?.postcode?.toString() || ''}
+                      value={editForm.location.postcode}
                       onChange={handleEditChange}
                       className="p-2 border rounded"
                       placeholder="Postcode"
+                      inputMode="numeric"
                     />
                   </div>
                 </div>
@@ -426,19 +482,18 @@ export default function ManageListingPage() {
 
               {interestedIds.length ? (
                 <div className="mt-3 space-y-2">
-                  {interestedIds.map(uid => (
-                    <div key={uid} className="flex items-center justify-between bg-white border rounded p-2 text-sm">
+                  {interestedIds.map((uid) => (
+                    <div
+                      key={uid}
+                      className="flex items-center justify-between bg-white border rounded p-2 text-sm"
+                    >
                       <div className="font-medium">{uid}</div>
                       <div className="text-xs text-gray-500">interested</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="mt-3 text-xs text-gray-500">
-                  {interestedCount > 0
-                    ? 'Your API currently returns a count but not the list of users. Once the server exposes interested_users_uids for owners, they’ll appear here.'
-                    : 'No interest yet.'}
-                </div>
+                <div className="mt-3 text-xs text-gray-500">No interest yet.</div>
               )}
             </div>
           </div>

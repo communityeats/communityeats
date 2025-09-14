@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { initAdmin, getFirestore, getStorage } from '@/lib/firebase/admin'
+import { initAdmin, getFirestore } from '@/lib/firebase/admin'
+import { buildImageUrlFromId } from '@/lib/utils'
 
 initAdmin()
-
-const generateImageURL = async (uid: string, imageId: string) => {
-  const filePath = `listings/${imageId}`
-  const [url] = await getStorage().bucket().file(filePath).getSignedUrl({
-    action: 'read',
-    expires: Date.now() + 60 * 60 * 1000, // 1 hour
-  })
-  return url
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,7 +28,7 @@ export async function GET(req: NextRequest) {
         let thumbnail_url = null
         try {
           if (uid && thumbId) {
-            thumbnail_url = await generateImageURL(uid, thumbId)
+            thumbnail_url = await buildImageUrlFromId(thumbId)
           }
         } catch (err) {
           console.warn(`Image missing for listing ${doc.id}`, err)

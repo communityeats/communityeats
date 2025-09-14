@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
+import type { ListingDoc } from '@/lib/types/listing'
 
-initAdmin() // Ensure initialized once
+initAdmin()
 
 const categories = ['home', 'share', 'coop'] as const
 const exchangeTypes = ['swap', 'gift', 'pay'] as const
@@ -28,11 +29,6 @@ type PatchPayload = {
   }
 }
 
-/**
- * POST /api/v1/listings/update
- * Body: { id, title?, description?, category?, exchange_type?, status?, location? }
- * Auth: Bearer <idToken>
- */
 export async function POST(req: Request) {
   try {
     // ---- Auth
@@ -61,27 +57,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    const existing = snap.data() || {}
-    if (existing.user_id !== userId) {
+    const existing = snap.data() as ListingDoc | undefined
+    if (!existing || existing.user_id !== userId) {
       return NextResponse.json({ error: 'Forbidden: not the owner' }, { status: 403 })
     }
 
-    // ---- Prepare partial update
-    const update: Record<string, any> = {}
+    // ---- Prepare update payloads
+    // Firestore update() accepts dot-notation. Use a free-form record for that.
+    const updatePaths: Record<string, unknown> = {}
     const errors: string[] = []
 
-    // Normalize helper: only set field if value is a non-empty string
     const maybeSetString = (key: string, val?: unknown, toLower = true) => {
       if (typeof val === 'string') {
         const trimmed = val.trim()
-        if (trimmed.length > 0) {
-          update[key] = toLower ? trimmed.toLowerCase() : trimmed
+        if (trimmed) {
+          updatePaths[key] = toLower ? trimmed.toLowerCase() : trimmed
         }
       }
     }
 
-    // title / description (lowercased like your create route)
-    maybeSetString('title', data.title)
+    // title / description
+    maybeSetString('title', data.title)           // if you really want lowercasing, keep toLower=true
     maybeSetString('description', data.description)
 
     // category
@@ -90,7 +86,7 @@ export async function POST(req: Request) {
       if (!categories.includes(c as Category)) {
         errors.push('Invalid category')
       } else {
-        update.category = c
+        updatePaths['category'] = c
       }
     }
 
@@ -100,7 +96,7 @@ export async function POST(req: Request) {
       if (!exchangeTypes.includes(e as ExchangeType)) {
         errors.push('Invalid exchange type')
       } else {
-        update.exchange_type = e
+        updatePaths['exchange_type'] = e
       }
     }
 
@@ -110,24 +106,20 @@ export async function POST(req: Request) {
       if (!statuses.includes(s as Status)) {
         errors.push('Invalid status')
       } else {
-        update.status = s
+        updatePaths['status'] = s
       }
     }
 
-    // location (merge semantics)
+    // location (dot-notation only; avoids keyof ListingDoc issues)
     if (data.location && typeof data.location === 'object') {
-      const locUpdate: Record<string, any> = {}
-      if (typeof data.location.country === 'string') {
-        maybeSetString('location.country', data.location.country)
-        if ('location.country' in update) locUpdate.country = update['location.country']
+      if (typeof data.location.country === 'string' && data.location.country.trim()) {
+        updatePaths['location.country'] = data.location.country.trim().toLowerCase()
       }
-      if (typeof data.location.state === 'string') {
-        maybeSetString('location.state', data.location.state)
-        if ('location.state' in update) locUpdate.state = update['location.state']
+      if (typeof data.location.state === 'string' && data.location.state.trim()) {
+        updatePaths['location.state'] = data.location.state.trim().toLowerCase()
       }
-      if (typeof data.location.suburb === 'string') {
-        maybeSetString('location.suburb', data.location.suburb)
-        if ('location.suburb' in update) locUpdate.suburb = update['location.suburb']
+      if (typeof data.location.suburb === 'string' && data.location.suburb.trim()) {
+        updatePaths['location.suburb'] = data.location.suburb.trim().toLowerCase()
       }
       if (
         typeof data.location.postcode === 'string' ||
@@ -135,19 +127,11 @@ export async function POST(req: Request) {
       ) {
         const n = Number(data.location.postcode)
         if (Number.isFinite(n) && n >= 0) {
-          update['location.postcode'] = n
-          locUpdate.postcode = n
+          updatePaths['location.postcode'] = n
         } else {
           errors.push('Invalid postcode')
         }
       }
-
-      // For convenience, also reflect top-level synonyms if you keep them in your create route
-      // (country/state/suburb/postcode duplicated at top level)
-      if (locUpdate.country) update.country = locUpdate.country
-      if (locUpdate.state) update.state = locUpdate.state
-      if (locUpdate.suburb) update.suburb = locUpdate.suburb
-      if (typeof locUpdate.postcode === 'number') update.postcode = locUpdate.postcode
     }
 
     if (errors.length) {
@@ -155,24 +139,26 @@ export async function POST(req: Request) {
     }
 
     // Always bump updated_at
-    update.updated_at = new Date().toISOString()
+    updatePaths['updated_at'] = new Date().toISOString()
 
-    // Bail if nothing to update
-    const keysToWrite = Object.keys(update)
+    // Bail if nothing to update (only updated_at present and unchanged)
+    const keysToWrite = Object.keys(updatePaths)
     if (keysToWrite.length === 1 && keysToWrite[0] === 'updated_at') {
       return NextResponse.json({ success: true, id, updated: existing }, { status: 200 })
     }
 
     // Write (partial)
-    await docRef.update(update)
+    await docRef.update(updatePaths)
 
-    // Return merged view (existing + update)
+    // Return merged view
     const updatedSnap = await docRef.get()
-    const updatedDoc = { id: updatedSnap.id, ...updatedSnap.data() }
+    const updatedDoc = { id: updatedSnap.id, ...(updatedSnap.data() as object) }
 
     return NextResponse.json({ success: true, id, updated: updatedDoc }, { status: 200 })
-  } catch (err: any) {
-    console.error(err)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  } catch (err: unknown) {
+    console.error('Error updating listing:', err)
+    const message =
+      err instanceof Error ? err.message : typeof err === 'string' ? err : 'Internal error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

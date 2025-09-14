@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
+import type { ListingDoc } from '@/lib/types/listing'
 
 initAdmin()
 
@@ -33,7 +34,7 @@ export async function POST(
         throw new Error('Listing not found')
       }
 
-      const data = listingSnap.data() as Record<string, any> | undefined
+      const data = listingSnap.data() as ListingDoc | undefined
       const ownerId: string | undefined = data?.user_id
       const interestedUsers: string[] = Array.isArray(data?.interested_users_uids)
         ? data!.interested_users_uids
@@ -72,15 +73,23 @@ export async function POST(
     })
 
     return NextResponse.json({ success: true }, { status: 200 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error claiming listing:', err)
-    const message = String(err?.message || 'Internal error')
+
+    let message = 'Internal error'
+    if (err instanceof Error) {
+      message = err.message
+    } else if (typeof err === 'string') {
+      message = err
+    }
+
     const status =
       message === 'Listing not found'
         ? 404
         : message === 'Cannot register interest in own listing'
         ? 400
         : 500
+
     return NextResponse.json({ error: message }, { status })
   }
 }

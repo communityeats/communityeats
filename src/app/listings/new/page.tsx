@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
-import { v4 as uuidv4 } from 'uuid'
 
 const categories = ['home', 'share', 'coop']
 const exchangeTypes = ['swap', 'gift', 'pay']
