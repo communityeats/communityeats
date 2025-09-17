@@ -51,6 +51,37 @@ async function fetchListingDetail(id: string, token: string): Promise<ListingDoc
   return res.json()
 }
 
+type InterestedUser = {
+  uid: string
+  name: string | null
+  email: string | null
+}
+
+async function fetchInterestedUsers(listingId: string, token: string): Promise<InterestedUser[]> {
+  const res = await fetch(`/api/v1/listings/${listingId}/interested-users`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error || 'Failed to load interested users')
+  }
+  const body = (await res.json().catch(() => ({}))) as { interested_users?: unknown }
+  const raw = Array.isArray(body.interested_users) ? body.interested_users : []
+
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const record = item as { uid?: unknown; name?: unknown; email?: unknown }
+      const uid = typeof record.uid === 'string' ? record.uid : null
+      if (!uid) return null
+      const name = typeof record.name === 'string' ? record.name : null
+      const email = typeof record.email === 'string' ? record.email : null
+      return { uid, name, email } as InterestedUser
+    })
+    .filter(Boolean) as InterestedUser[]
+}
+
 async function updateListing(token: string, id: string, payload: PatchPayload) {
   // NOTE: endpoint to be implemented server-side
   const res = await fetch(`/api/v1/listings/update`, {
@@ -81,6 +112,10 @@ export default function ManageListingPage() {
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [listing, setListing] = useState<ListingDoc | null>(null)
+
+  const [interestedUsers, setInterestedUsers] = useState<InterestedUser[] | null>(null)
+  const [interestedUsersLoading, setInterestedUsersLoading] = useState<boolean>(false)
+  const [interestedUsersError, setInterestedUsersError] = useState<string | null>(null)
 
   // Edit form
   const [saving, setSaving] = useState(false)
@@ -218,6 +253,46 @@ export default function ManageListingPage() {
     }
   }, [listingId, idToken, authInitError, userUid])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadInterestedUsers = async () => {
+      if (!listingId) return
+      if (!idToken) {
+        if (authInitError && !cancelled) {
+          setInterestedUsersError(authInitError)
+          setInterestedUsers(null)
+          setInterestedUsersLoading(false)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setInterestedUsersLoading(true)
+        setInterestedUsersError(null)
+        setInterestedUsers(null)
+      }
+
+      try {
+        const users = await fetchInterestedUsers(listingId, idToken)
+        if (!cancelled) setInterestedUsers(users)
+      } catch (e: unknown) {
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : 'Failed to load interested users'
+          setInterestedUsersError(message)
+          setInterestedUsers(null)
+        }
+      } finally {
+        if (!cancelled) setInterestedUsersLoading(false)
+      }
+    }
+
+    void loadInterestedUsers()
+    return () => {
+      cancelled = true
+    }
+  }, [listingId, idToken, authInitError])
+
   const handleEditChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
@@ -299,8 +374,9 @@ export default function ManageListingPage() {
     }
   }
 
-  const interestedIds = listing?.interested_users_uids ?? []
-  const interestedCount = interestedIds.length
+  const fallbackInterestedIds: string[] =
+    listing && Array.isArray(listing.interested_users_uids) ? listing.interested_users_uids : []
+  const interestedCount = interestedUsers?.length ?? fallbackInterestedIds.length
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -480,9 +556,28 @@ export default function ManageListingPage() {
                 Interested users: <span className="font-medium">{interestedCount}</span>
               </p>
 
-              {interestedIds.length ? (
+              {interestedUsersLoading ? (
+                <div className="mt-3 text-xs text-gray-500">Loading interested users…</div>
+              ) : interestedUsersError ? (
+                <div className="mt-3 text-xs text-red-600">{interestedUsersError}</div>
+              ) : interestedUsers && interestedUsers.length ? (
                 <div className="mt-3 space-y-2">
-                  {interestedIds.map((uid) => (
+                  {interestedUsers.map(({ uid, name, email }) => (
+                    <div
+                      key={uid}
+                      className="flex items-center justify-between bg-white border rounded p-2 text-sm"
+                    >
+                      <div>
+                        <div className="font-medium">{name || 'Unnamed user'}</div>
+                        <div className="text-xs text-gray-500">{email || `UID: ${uid}`}</div>
+                      </div>
+                      <div className="text-xs text-gray-500">interested</div>
+                    </div>
+                  ))}
+                </div>
+              ) : fallbackInterestedIds.length ? (
+                <div className="mt-3 space-y-2">
+                  {fallbackInterestedIds.map((uid) => (
                     <div
                       key={uid}
                       className="flex items-center justify-between bg-white border rounded p-2 text-sm"
