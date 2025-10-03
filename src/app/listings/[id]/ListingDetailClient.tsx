@@ -6,6 +6,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
+import type { ExchangeType, ListingLocation, ListingStatus } from '@/lib/types/listing'
 
 type Listing = {
   id: string
@@ -14,14 +15,9 @@ type Listing = {
   image_urls: string[]
   interested_user_count: number
   category?: string
-  exchange_type?: string
-  location?: {
-    country?: string
-    state?: string
-    suburb?: string
-    postcode?: number
-  }
-  status?: string
+  exchange_type?: ExchangeType
+  location?: Partial<ListingLocation>
+  status?: ListingStatus
   created_at?: string
   has_registered?: boolean // <-- Add this line
   user_id?: string // <-- Add this line

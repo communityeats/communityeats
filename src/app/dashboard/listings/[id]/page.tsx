@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import {
+  EXCHANGE_TYPES,
+  LISTING_CATEGORIES,
+  LISTING_STATUSES,
+  normalizeListingLocation,
+} from '@/lib/types/listing'
 import type {
   ListingDoc,
   ListingLocation,
@@ -325,23 +331,38 @@ export default function ManageListingPage() {
         throw new Error('Postcode must be a number.')
       }
 
-      const normalizedLocation: ListingLocation | undefined =
-        editForm.location.country ||
-        editForm.location.state ||
-        editForm.location.suburb ||
-        editForm.location.postcode
-          ? {
-              country: (editForm.location.country || '').toLowerCase(),
-              state: (editForm.location.state || '').toLowerCase(),
-              suburb: (editForm.location.suburb || '').toLowerCase(),
-              // If postcode omitted, fall back to previous value to satisfy required field on server.
+      const rawLocation = {
+        country: editForm.location.country,
+        state: editForm.location.state,
+        suburb: editForm.location.suburb,
+        postcode: editForm.location.postcode,
+      }
+
+      const hasLocationInput = Object.values(rawLocation).some((val) => val.trim() !== '')
+
+      const normalizedLocation: ListingLocation | undefined = hasLocationInput
+        ? (() => {
+            const normalized = normalizeListingLocation({
+              ...rawLocation,
               postcode:
                 postcodeNum ??
                 (typeof listing.location?.postcode === 'number'
                   ? listing.location.postcode
-                  : 0),
+                  : null),
+            })
+
+            if (
+              !normalized.country ||
+              !normalized.state ||
+              !normalized.suburb ||
+              normalized.postcode <= 0
+            ) {
+              throw new Error('Location requires country, state, suburb, and a positive postcode.')
             }
-          : undefined
+
+            return normalized
+          })()
+        : undefined
 
       const payload: PatchPayload = {
         title: (editForm.title || '').toLowerCase(),
@@ -349,7 +370,6 @@ export default function ManageListingPage() {
         category: editForm.category || undefined,
         exchange_type: editForm.exchange_type || undefined,
         status: editForm.status || undefined,
-        // Keep top-level country in sync with location.country if provided
         country: normalizedLocation?.country,
         location: normalizedLocation,
       }
@@ -465,7 +485,11 @@ export default function ManageListingPage() {
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Select Category</option>
-                    <option value="share">share</option>
+                    {LISTING_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -478,7 +502,11 @@ export default function ManageListingPage() {
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Select Exchange Type</option>
-                    <option value="swap">swap</option>
+                    {EXCHANGE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -490,7 +518,11 @@ export default function ManageListingPage() {
                     onChange={handleEditChange}
                     className="w-full p-2 border rounded"
                   >
-                    <option value="available">available</option>
+                    {LISTING_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

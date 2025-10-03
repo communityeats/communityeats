@@ -3,13 +3,30 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
+import {
+  EXCHANGE_TYPES,
+  LISTING_CATEGORIES,
+  normalizeListingLocation,
+  thumbnailInImageIds,
+  type ExchangeType,
+} from '@/lib/types/listing'
 
-const categories = ['home', 'share', 'coop']
-const exchangeTypes = ['swap', 'gift', 'pay']
+type FormState = {
+  title: string
+  description: string
+  country: string
+  state: string
+  suburb: string
+  postcode: string
+  category: string
+  exchange_type: ExchangeType | ''
+  contact_info: string
+  anonymous: boolean
+}
 
 export default function NewListingPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormState>({
     title: '',
     description: '',
     country: '',
@@ -58,7 +75,18 @@ export default function NewListingPage() {
       return
     }
 
-    if (!thumbnailId || !images.some(img => img.name === thumbnailId)) {
+    if (!formData.country || !formData.state || !formData.suburb) {
+      setError('Please provide full location details.')
+      return
+    }
+
+    const postcodeNumber = Number(formData.postcode)
+    if (!Number.isFinite(postcodeNumber) || postcodeNumber <= 0) {
+      setError('Please provide a valid postcode.')
+      return
+    }
+
+    if (!thumbnailId || !images.some((img) => img.name === thumbnailId)) {
       setError('Thumbnail must match one of the selected images.')
       return
     }
@@ -98,11 +126,26 @@ export default function NewListingPage() {
       })
     }
 
-    const thumbnailEntry = uploaded.find(img => img.originalName === thumbnailId)
+    const thumbnailEntry = uploaded.find((img) => img.originalName === thumbnailId)
     if (!thumbnailEntry) {
       setError('Thumbnail image not found among uploads.')
       return
     }
+
+    if (!thumbnailInImageIds(
+      uploaded.map((img) => img.id),
+      thumbnailEntry.id
+    )) {
+      setError('Thumbnail must be one of the uploaded image IDs.')
+      return
+    }
+
+    const location = normalizeListingLocation({
+      country: formData.country,
+      state: formData.state,
+      suburb: formData.suburb,
+      postcode: postcodeNumber,
+    })
 
     const payload = {
       title: formData.title.toLowerCase(),
@@ -115,15 +158,10 @@ export default function NewListingPage() {
       exchange_type: formData.exchange_type,
       contact_info: formData.contact_info || null,
       anonymous: formData.anonymous,
-      image_ids: uploaded.map(img => img.id),
-      image_urls: uploaded.map(img => img.url),
+      image_ids: uploaded.map((img) => img.id),
+      image_urls: uploaded.map((img) => img.url),
       thumbnail_id: thumbnailEntry.id,
-      location: {
-        country: formData.country.toLowerCase(),
-        state: formData.state.toLowerCase(),
-        suburb: formData.suburb.toLowerCase(),
-        postcode: Number(formData.postcode),
-      },
+      location,
       user_id: user.uid,
     }
 
@@ -154,20 +192,24 @@ export default function NewListingPage() {
         <textarea name="description" placeholder="Description" className="w-full p-2 border rounded" onChange={handleChange} required />
 
         <div className="grid grid-cols-2 gap-4">
-          <input name="country" placeholder="Country" className="p-2 border rounded" onChange={handleChange} />
-          <input name="state" placeholder="State" className="p-2 border rounded" onChange={handleChange} />
-          <input name="suburb" placeholder="Suburb" className="p-2 border rounded" onChange={handleChange} />
-          <input name="postcode" placeholder="Postcode" className="p-2 border rounded" onChange={handleChange} />
+          <input name="country" placeholder="Country" className="p-2 border rounded" onChange={handleChange} required />
+          <input name="state" placeholder="State" className="p-2 border rounded" onChange={handleChange} required />
+          <input name="suburb" placeholder="Suburb" className="p-2 border rounded" onChange={handleChange} required />
+          <input name="postcode" placeholder="Postcode" className="p-2 border rounded" onChange={handleChange} required />
         </div>
 
         <select name="category" className="w-full p-2 border rounded" onChange={handleChange} required>
           <option value="">Select Category</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          {LISTING_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
 
         <select name="exchange_type" className="w-full p-2 border rounded" onChange={handleChange} required>
           <option value="">Select Exchange Type</option>
-          {exchangeTypes.map(e => <option key={e} value={e}>{e}</option>)}
+          {EXCHANGE_TYPES.map((e) => (
+            <option key={e} value={e}>{e}</option>
+          ))}
         </select>
 
         <input name="contact_info" placeholder="Contact Info (optional)" className="w-full p-2 border rounded" onChange={handleChange} />
