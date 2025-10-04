@@ -153,6 +153,42 @@ export async function POST(req: Request) {
           updatePaths['postcode'] = normalized.postcode
         }
       }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'place_id')) {
+        if (normalized.place_id) {
+          updatePaths['location.place_id'] = normalized.place_id
+          updatePaths['location_place_id'] = normalized.place_id
+        } else {
+          updatePaths['location.place_id'] = null
+          updatePaths['location_place_id'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'label')) {
+        if (normalized.label) {
+          updatePaths['location.label'] = normalized.label
+          updatePaths['location_label'] = normalized.label
+        } else {
+          updatePaths['location.label'] = null
+          updatePaths['location_label'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'latitude')) {
+        if (typeof normalized.latitude === 'number') {
+          updatePaths['location.latitude'] = normalized.latitude
+        } else {
+          updatePaths['location.latitude'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'longitude')) {
+        if (typeof normalized.longitude === 'number') {
+          updatePaths['location.longitude'] = normalized.longitude
+        } else {
+          updatePaths['location.longitude'] = null
+        }
+      }
     }
 
     if (errors.length) {

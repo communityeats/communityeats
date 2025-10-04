@@ -10,14 +10,13 @@ import {
   thumbnailInImageIds,
   type ExchangeType,
 } from '@/lib/types/listing'
+import LocationAutocomplete, {
+  type LocationSelection,
+} from '@/components/LocationAutocomplete'
 
 type FormState = {
   title: string
   description: string
-  country: string
-  state: string
-  suburb: string
-  postcode: string
   category: string
   exchange_type: ExchangeType | ''
   contact_info: string
@@ -29,10 +28,6 @@ export default function NewListingPage() {
   const [formData, setFormData] = useState<FormState>({
     title: '',
     description: '',
-    country: '',
-    state: '',
-    suburb: '',
-    postcode: '',
     category: '',
     exchange_type: '',
     contact_info: '',
@@ -41,6 +36,9 @@ export default function NewListingPage() {
   const [images, setImages] = useState<File[]>([])
   const [thumbnailId, setThumbnailId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [locationSelection, setLocationSelection] = useState<LocationSelection | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
@@ -75,14 +73,18 @@ export default function NewListingPage() {
       return
     }
 
-    if (!formData.country || !formData.state || !formData.suburb) {
-      setError('Please provide full location details.')
+    if (!googleMapsApiKey) {
+      setError('Location search requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to be configured.')
       return
     }
 
-    const postcodeNumber = Number(formData.postcode)
-    if (!Number.isFinite(postcodeNumber) || postcodeNumber <= 0) {
-      setError('Please provide a valid postcode.')
+    if (!locationSelection) {
+      setError('Please choose a location from the search field.')
+      return
+    }
+
+    if (locationError) {
+      setError(locationError)
       return
     }
 
@@ -141,19 +143,18 @@ export default function NewListingPage() {
     }
 
     const location = normalizeListingLocation({
-      country: formData.country,
-      state: formData.state,
-      suburb: formData.suburb,
-      postcode: postcodeNumber,
+      ...locationSelection.location,
+      latitude: locationSelection.location.latitude ?? undefined,
+      longitude: locationSelection.location.longitude ?? undefined,
     })
 
     const payload = {
       title: formData.title.toLowerCase(),
       description: formData.description.toLowerCase(),
-      country: formData.country.toLowerCase(),
-      state: formData.state.toLowerCase(),
-      suburb: formData.suburb.toLowerCase(),
-      postcode: Number(formData.postcode),
+      country: location.country,
+      state: location.state,
+      suburb: location.suburb,
+      postcode: location.postcode,
       category: formData.category,
       exchange_type: formData.exchange_type,
       contact_info: formData.contact_info || null,
@@ -162,6 +163,8 @@ export default function NewListingPage() {
       image_urls: uploaded.map((img) => img.url),
       thumbnail_id: thumbnailEntry.id,
       location,
+      location_place_id: location.place_id ?? null,
+      location_label: location.label ?? null,
       user_id: user.uid,
     }
 
@@ -191,12 +194,26 @@ export default function NewListingPage() {
         <input name="title" placeholder="Title" className="w-full p-2 border rounded" onChange={handleChange} required />
         <textarea name="description" placeholder="Description" className="w-full p-2 border rounded" onChange={handleChange} required />
 
-        <div className="grid grid-cols-2 gap-4">
-          <input name="country" placeholder="Country" className="p-2 border rounded" onChange={handleChange} required />
-          <input name="state" placeholder="State" className="p-2 border rounded" onChange={handleChange} required />
-          <input name="suburb" placeholder="Suburb" className="p-2 border rounded" onChange={handleChange} required />
-          <input name="postcode" placeholder="Postcode" className="p-2 border rounded" onChange={handleChange} required />
-        </div>
+        <LocationAutocomplete
+          apiKey={googleMapsApiKey}
+          value={locationSelection}
+          onChange={(selection) => {
+            setLocationSelection(selection)
+            setLocationError(null)
+          }}
+          onError={(message) => {
+            setLocationError(message)
+            if (message) setError(message)
+          }}
+          error={locationError}
+          disabled={!googleMapsApiKey}
+          placeholder="Start typing an address"
+        />
+        {!googleMapsApiKey ? (
+          <p className="text-sm text-red-600">
+            Configure `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in your environment to enable location search.
+          </p>
+        ) : null}
 
         <select name="category" className="w-full p-2 border rounded" onChange={handleChange} required>
           <option value="">Select Category</option>

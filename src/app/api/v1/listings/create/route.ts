@@ -89,6 +89,8 @@ export async function POST(req: Request) {
       state: location.state,
       suburb: location.suburb,
       postcode: location.postcode,
+      location_place_id: location.place_id ?? null,
+      location_label: location.label ?? null,
       category: data.category,
       exchange_type: data.exchange_type,
       contact_info: data.contact_info ?? null,

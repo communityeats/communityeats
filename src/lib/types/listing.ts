@@ -12,10 +12,18 @@ export interface ListingLocation {
   state: string
   suburb: string
   postcode: number
+  place_id?: string | null
+  label?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
-export type ListingLocationInput = Partial<ListingLocation> & {
+export type ListingLocationInput = Partial<
+  Omit<ListingLocation, 'postcode' | 'latitude' | 'longitude'>
+> & {
   postcode?: number | string | null
+  latitude?: number | string | null
+  longitude?: number | string | null
 }
 
 export interface ListingDoc {
@@ -34,6 +42,8 @@ export interface ListingDoc {
   user_id: string
   created_at: string
   updated_at: string
+  location_place_id?: string | null
+  location_label?: string | null
 
   /**
    * @deprecated Prefer `location.country`. Retained until callers stop relying on it.
@@ -70,11 +80,30 @@ export function normalizeListingLocation(input: ListingLocationInput): ListingLo
     return Number.isFinite(num) ? Math.trunc(num) : 0
   }
 
+  const parseCoordinate = (value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+      const num = Number(value)
+      if (Number.isFinite(num)) return num
+    }
+    return undefined
+  }
+
+  const placeId =
+    typeof input.place_id === 'string' && input.place_id.trim() ? input.place_id.trim() : undefined
+  const label = typeof input.label === 'string' && input.label.trim() ? input.label.trim() : undefined
+  const latitude = parseCoordinate(input.latitude)
+  const longitude = parseCoordinate(input.longitude)
+
   return {
     country: normalize(input.country),
     state: normalize(input.state),
     suburb: normalize(input.suburb),
     postcode: parsePostcode(input.postcode),
+    ...(placeId ? { place_id: placeId } : {}),
+    ...(label ? { label } : {}),
+    ...(latitude !== undefined ? { latitude } : {}),
+    ...(longitude !== undefined ? { longitude } : {}),
   }
 }
 
