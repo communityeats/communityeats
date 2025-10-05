@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
 import {
   EXCHANGE_TYPES,
-  LISTING_CATEGORIES,
   normalizeListingLocation,
   thumbnailInImageIds,
   type ExchangeType,
@@ -17,7 +16,6 @@ import LocationAutocomplete, {
 type FormState = {
   title: string
   description: string
-  category: string
   exchange_type: ExchangeType | ''
   contact_info: string
   anonymous: boolean
@@ -28,7 +26,6 @@ export default function NewListingPage() {
   const [formData, setFormData] = useState<FormState>({
     title: '',
     description: '',
-    category: '',
     exchange_type: '',
     contact_info: '',
     anonymous: false,
@@ -68,7 +65,7 @@ export default function NewListingPage() {
     e.preventDefault()
     setError('')
 
-    if (!formData.title || !formData.description || !formData.category || !formData.exchange_type) {
+    if (!formData.title || !formData.description || !formData.exchange_type) {
       setError('Please fill in all required fields.')
       return
     }
@@ -155,7 +152,7 @@ export default function NewListingPage() {
       state: location.state,
       suburb: location.suburb,
       postcode: location.postcode,
-      category: formData.category,
+      category: null,
       exchange_type: formData.exchange_type,
       contact_info: formData.contact_info || null,
       anonymous: formData.anonymous,
@@ -215,17 +212,10 @@ export default function NewListingPage() {
           </p>
         ) : null}
 
-        <select name="category" className="w-full p-2 border rounded" onChange={handleChange} required>
-          <option value="">Select Category</option>
-          {LISTING_CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-
         <select name="exchange_type" className="w-full p-2 border rounded" onChange={handleChange} required>
           <option value="">Select Exchange Type</option>
-          {EXCHANGE_TYPES.map((e) => (
-            <option key={e} value={e}>{e}</option>
+          {EXCHANGE_TYPES.map((type) => (
+            <option key={type} value={type}>{type}</option>
           ))}
         </select>
 

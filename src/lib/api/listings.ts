@@ -54,7 +54,7 @@ export async function fetchInterestedUsers(listingId: string, token: string): Pr
 export type ListingPatchPayload = Partial<
   Pick<
     ListingDoc,
-    'title' | 'description' | 'category' | 'exchange_type' | 'status' | 'country' | 'location'
+    'title' | 'description' | 'exchange_type' | 'status' | 'country' | 'location'
   >
 >
 

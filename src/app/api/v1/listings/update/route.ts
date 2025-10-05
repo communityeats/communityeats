@@ -4,7 +4,6 @@ import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import type { ListingDoc } from '@/lib/types/listing'
 import {
-  LISTING_CATEGORIES,
   isExchangeType,
   isListingStatus,
   normalizeListingLocation,
@@ -17,7 +16,6 @@ type PatchPayload = {
   id: string
   title?: string
   description?: string
-  category?: string
   exchange_type?: string
   status?: string
   location?: {
@@ -82,16 +80,6 @@ export async function POST(req: Request) {
     // title / description
     maybeSetString('title', data.title)           // if you really want lowercasing, keep toLower=true
     maybeSetString('description', data.description)
-
-    // category
-    if (typeof data.category === 'string' && data.category.trim()) {
-      const c = data.category.trim()
-      if (!LISTING_CATEGORIES.includes(c)) {
-        errors.push('Invalid category')
-      } else {
-        updatePaths['category'] = c
-      }
-    }
 
     // exchange_type
     if (typeof data.exchange_type === 'string' && data.exchange_type.trim()) {

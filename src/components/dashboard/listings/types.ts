@@ -1,5 +1,4 @@
 import type {
-  ListingCategory,
   ExchangeType,
   ListingStatus,
 } from '@/lib/types/listing'
@@ -7,7 +6,6 @@ import type {
 export type EditFormState = {
   title: string
   description: string
-  category: ListingCategory | ''
   exchange_type: ExchangeType | ''
   status: ListingStatus | ''
   location: {

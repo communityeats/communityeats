@@ -9,7 +9,6 @@ type Props = {
   onCancel: () => void
   saving: boolean
   deleting: boolean
-  categories: readonly string[]
   exchangeTypes: readonly string[]
   statuses: readonly string[]
 }
@@ -22,7 +21,6 @@ export function ListingEditForm({
   onCancel,
   saving,
   deleting,
-  categories,
   exchangeTypes,
   statuses,
 }: Props) {
@@ -51,23 +49,6 @@ export function ListingEditForm({
             rows={4}
             placeholder="Describe your item/offer"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Category</label>
-          <select
-            name="category"
-            value={editForm.category}
-            onChange={onChange}
-            className="w-full p-2 border rounded"
-          >
-            <option value="">Select Category</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div>

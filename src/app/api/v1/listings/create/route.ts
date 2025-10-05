@@ -3,7 +3,6 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import {
-  LISTING_CATEGORIES,
   normalizeListingLocation,
   thumbnailInImageIds,
   isExchangeType,
@@ -12,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
 
-const REQUIRED_FIELDS = ['title', 'description', 'category', 'exchange_type', 'thumbnail_id', 'image_ids'] as const
+const REQUIRED_FIELDS = ['title', 'description', 'exchange_type', 'thumbnail_id', 'image_ids'] as const
 
 export async function POST(req: Request) {
   try {
@@ -44,10 +43,6 @@ export async function POST(req: Request) {
 
     if (typeof data.description !== 'string' || !data.description.trim()) {
       return NextResponse.json({ error: 'Invalid description' }, { status: 400 })
-    }
-
-    if (typeof data.category !== 'string' || !LISTING_CATEGORIES.includes(data.category)) {
-      return NextResponse.json({ error: 'Invalid category' }, { status: 400 })
     }
 
     if (!isExchangeType(data.exchange_type)) {
@@ -91,7 +86,7 @@ export async function POST(req: Request) {
       postcode: location.postcode,
       location_place_id: location.place_id ?? null,
       location_label: location.label ?? null,
-      category: data.category,
+      category: typeof data.category === 'string' ? data.category : null,
       exchange_type: data.exchange_type,
       contact_info: data.contact_info ?? null,
       image_ids: imageIds,

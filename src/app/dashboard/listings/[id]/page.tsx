@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   EXCHANGE_TYPES,
-  LISTING_CATEGORIES,
   LISTING_STATUSES,
   normalizeListingLocation,
 } from '@/lib/types/listing'
@@ -29,7 +28,6 @@ import type { EditFormState } from '@/components/dashboard/listings/types'
 const EMPTY_EDIT_FORM: EditFormState = {
   title: '',
   description: '',
-  category: '',
   exchange_type: '',
   status: '',
   location: { country: '', state: '', suburb: '', postcode: '' },
@@ -39,7 +37,6 @@ function mapListingToEditForm(detail: ListingDoc): EditFormState {
   return {
     title: detail.title || '',
     description: detail.description || '',
-    category: (detail.category ?? '') as EditFormState['category'],
     exchange_type: (detail.exchange_type ?? '') as EditFormState['exchange_type'],
     status: (detail.status ?? '') as EditFormState['status'],
     location: {
@@ -161,7 +158,6 @@ export default function ManageListingPage() {
       const payload: ListingPatchPayload = {
         title: (editForm.title || '').toLowerCase(),
         description: (editForm.description || '').toLowerCase(),
-        category: editForm.category || undefined,
         exchange_type: editForm.exchange_type || undefined,
         status: editForm.status || undefined,
         country: normalizedLocation?.country,
@@ -207,7 +203,7 @@ export default function ManageListingPage() {
 
     try {
       await deleteListingRequest(idToken, listingId)
-      router.push('/dashboard/listings?deleted=1')
+      router.push('/dashboard?deleted=1')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to delete listing'
       setError(message)
@@ -246,10 +242,9 @@ export default function ManageListingPage() {
               onChange={handleEditChange}
               onSave={saveEdits}
               onDelete={handleDelete}
-              onCancel={() => router.push('/dashboard/listings')}
+              onCancel={() => router.push('/dashboard')}
               saving={saving}
               deleting={deleting}
-              categories={LISTING_CATEGORIES}
               exchangeTypes={EXCHANGE_TYPES}
               statuses={LISTING_STATUSES}
             />

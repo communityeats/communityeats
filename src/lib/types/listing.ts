@@ -1,6 +1,3 @@
-export const LISTING_CATEGORIES = ['home', 'share', 'coop'] as const
-export type ListingCategory = (typeof LISTING_CATEGORIES)[number]
-
 export const EXCHANGE_TYPES = ['swap', 'gift'] as const
 export type ExchangeType = (typeof EXCHANGE_TYPES)[number]
 
@@ -28,7 +25,7 @@ export type ListingLocationInput = Partial<
 
 export interface ListingDoc {
   anonymous: boolean
-  category: ListingCategory
+  category?: string | null
   contact_info: string | null
   description: string
   exchange_type: ExchangeType
@@ -61,10 +58,6 @@ export interface ListingDoc {
    * @deprecated Prefer `location.postcode`. Retained until callers stop relying on it.
    */
   postcode?: number
-}
-
-export function isExchangeType(value: unknown): value is ExchangeType {
-  return typeof value === 'string' && (EXCHANGE_TYPES as readonly string[]).includes(value)
 }
 
 export function isListingStatus(value: unknown): value is ListingStatus {
@@ -114,4 +107,8 @@ export function thumbnailInImageIds(imageIds: unknown, thumbnailId: unknown): bo
     imageIds.every((item) => typeof item === 'string') &&
     imageIds.includes(thumbnailId)
   )
+}
+
+export function isExchangeType(value: unknown): value is ExchangeType {
+  return typeof value === 'string' && (EXCHANGE_TYPES as readonly string[]).includes(value)
 }
