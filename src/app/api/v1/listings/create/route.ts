@@ -64,6 +64,10 @@ export async function POST(req: Request) {
       state: data.location?.state ?? data.state,
       suburb: data.location?.suburb ?? data.suburb,
       postcode: data.location?.postcode ?? data.postcode,
+      latitude: data.location?.latitude ?? data.latitude,
+      longitude: data.location?.longitude ?? data.longitude,
+      place_id: data.location?.place_id ?? data.location_place_id ?? data.place_id,
+      label: data.location?.label ?? data.location_label ?? data.label,
     })
 
     if (!location.country || !location.state || !location.suburb || location.postcode <= 0) {
