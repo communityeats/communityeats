@@ -7,6 +7,8 @@ import {
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
 import type { ExchangeType, ListingLocation, ListingStatus } from '@/lib/types/listing'
+import { ensureConversation } from '@/lib/api/chat'
+import MessageThread from '@/components/MessageThread'
 
 type Listing = {
   id: string
@@ -32,6 +34,9 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [successMessage, setSuccessMessage] = useState('')
   const [userToken, setUserToken] = useState<string | null>(null)
   const [currentUid, setCurrentUid] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationError, setConversationError] = useState<string | null>(null)
+  const [openingConversation, setOpeningConversation] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -103,6 +108,27 @@ export default function ListingDetailClient({ id }: { id: string }) {
       setError('Failed to send claim request')
     } finally {
       setClaiming(false)
+    }
+  }
+
+  const openConversation = async () => {
+    if (!userToken) {
+      router.push(`/login?redirect=/listings/${id}`)
+      return
+    }
+
+    setOpeningConversation(true)
+    setConversationError(null)
+
+    try {
+      const conversation = await ensureConversation({ token: userToken, listingId: id })
+      setConversationId(conversation.id)
+      router.push(`/messages?conversation=${conversation.id}`, { scroll: false })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to open conversation'
+      setConversationError(message)
+    } finally {
+      setOpeningConversation(false)
     }
   }
 
@@ -192,12 +218,37 @@ export default function ListingDetailClient({ id }: { id: string }) {
             ) : hasRegistered ? (
               <>
                 <button
-                  onClick={() => router.push(`/claims`)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition"
+                  onClick={openConversation}
+                  disabled={openingConversation}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-60"
                 >
-                  Message Owner
+                  {openingConversation
+                    ? 'Opening chat…'
+                    : conversationId
+                      ? 'Open Messages'
+                      : 'Message Owner'}
                 </button>
                 {successMessage && <p className="text-green-600 text-sm mt-2">{successMessage}</p>}
+                {conversationError && (
+                  <p className="text-red-600 text-sm mt-2">{conversationError}</p>
+                )}
+                {conversationId ? (
+                  <div className="mt-4 border rounded overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
+                      <h3 className="text-sm font-medium text-gray-700">Messages with owner</h3>
+                      <button
+                        type="button"
+                        onClick={() => setConversationId(null)}
+                        className="text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="h-72">
+                      <MessageThread conversationId={conversationId} />
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : (
               <button

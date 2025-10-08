@@ -17,6 +17,7 @@ import {
   type InterestedUser,
   type ListingPatchPayload,
 } from '@/lib/api/listings'
+import { ensureConversation } from '@/lib/api/chat'
 import { useListingAuth } from '@/hooks/useListingAuth'
 import { useListingDetail } from '@/hooks/useListingDetail'
 import { useInterestedUsers } from '@/hooks/useInterestedUsers'
@@ -24,6 +25,7 @@ import ListingSummaryCard from '@/components/dashboard/listings/ListingSummaryCa
 import ListingEditForm from '@/components/dashboard/listings/ListingEditForm'
 import InterestedUsersPanel from '@/components/dashboard/listings/InterestedUsersPanel'
 import type { EditFormState } from '@/components/dashboard/listings/types'
+import MessageThread from '@/components/MessageThread'
 
 const EMPTY_EDIT_FORM: EditFormState = {
   title: '',
@@ -69,6 +71,9 @@ export default function ManageListingPage() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [startingConversationUid, setStartingConversationUid] = useState<string | null>(null)
+  const [conversationError, setConversationError] = useState<string | null>(null)
 
   useEffect(() => {
     setError(detailError)
@@ -185,6 +190,31 @@ export default function ManageListingPage() {
     }
   }
 
+  const handleStartConversation = async (targetUid: string) => {
+    if (!listingId) return
+    if (!idToken) {
+      setError('You must be signed in to message interested users.')
+      return
+    }
+
+    setStartingConversationUid(targetUid)
+    setConversationError(null)
+    try {
+      const conversation = await ensureConversation({
+        token: idToken,
+        listingId,
+        targetUserUid: targetUid,
+      })
+      setActiveConversationId(conversation.id)
+      router.push(`/messages?conversation=${conversation.id}`, { scroll: false })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to open conversation'
+      setConversationError(message)
+    } finally {
+      setStartingConversationUid(null)
+    }
+  }
+
   const handleDelete = async () => {
     if (!listingId) return
 
@@ -245,17 +275,47 @@ export default function ManageListingPage() {
               onCancel={() => router.push('/dashboard')}
               saving={saving}
               deleting={deleting}
-              exchangeTypes={EXCHANGE_TYPES}
               statuses={LISTING_STATUSES}
+              exchangeTypes={EXCHANGE_TYPES}
             />
           </div>
 
-          <InterestedUsersPanel
-            interestedUsers={interestedUsers as InterestedUser[] | null}
-            fallbackInterestedIds={fallbackInterestedIds}
-            loading={interestedUsersLoading}
-            error={interestedUsersError}
-          />
+          <div className="space-y-4">
+            <InterestedUsersPanel
+              interestedUsers={interestedUsers as InterestedUser[] | null}
+              fallbackInterestedIds={fallbackInterestedIds}
+              loading={interestedUsersLoading}
+              error={interestedUsersError}
+              onStartConversation={handleStartConversation}
+              startingConversationUid={startingConversationUid}
+            />
+
+            {conversationError ? (
+              <div className="text-sm text-red-600">{conversationError}</div>
+            ) : null}
+
+            {activeConversationId ? (
+              <div className="border rounded overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
+                  <h3 className="text-sm font-medium text-gray-700">Messages</h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveConversationId(null)}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="h-80">
+                  <MessageThread conversationId={activeConversationId} />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500 border rounded p-3">
+                Select an interested user to start a conversation.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
