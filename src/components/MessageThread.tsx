@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useState, useCallback, FormEvent } from 'react'
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { firestore } from '@/lib/firebase/client'
 
 interface Message {
   id: string
   author_uid: string
   body: string
   created_at: string | null
+  created_at_ms: number | null
 }
 
 type MessageThreadProps = {
@@ -20,6 +23,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState<boolean>(false)
   const [input, setInput] = useState<string>('')
+  const [allowRealtime, setAllowRealtime] = useState<boolean>(false)
 
   useEffect(() => {
     let cancelled = false
@@ -44,18 +48,22 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
           if (cancelled) return
           if (!user) {
             setIdToken(null)
+            setAllowRealtime(true)
             return
           }
           try {
             const token = await user.getIdToken()
             if (!cancelled) setIdToken(token)
+            setAllowRealtime(true)
           } catch {
             try {
               const fresh = await user.getIdToken(true)
               if (!cancelled) setIdToken(fresh)
+              setAllowRealtime(true)
             } catch (err: unknown) {
               console.error('[MessageThread] failed to refresh token', err)
               if (!cancelled) setIdToken(null)
+              setAllowRealtime(true)
             }
           }
         })
@@ -89,7 +97,15 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         if (!res.ok) {
           throw new Error(payload.error || 'Failed to load messages')
         }
-        setMessages(Array.isArray(payload.messages) ? payload.messages : [])
+        const mapped = Array.isArray(payload.messages)
+          ? payload.messages.map((m) => ({
+              ...m,
+              created_at_ms: typeof (m as { created_at_ms?: unknown }).created_at_ms === 'number'
+                ? (m as { created_at_ms?: number }).created_at_ms ?? null
+                : null,
+            }))
+          : []
+        setMessages(mapped)
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load messages')
         setMessages([])
@@ -101,9 +117,71 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
   )
 
   useEffect(() => {
-    if (!conversationId || !idToken) return
+    if (!conversationId || !idToken || allowRealtime) return
     void fetchMessages(idToken)
-  }, [conversationId, idToken, fetchMessages])
+  }, [allowRealtime, conversationId, idToken, fetchMessages])
+
+  useEffect(() => {
+    if (!allowRealtime || !conversationId || !idToken) return
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    const messagesRef = collection(firestore, 'conversations', conversationId, 'messages')
+    const q = query(messagesRef, orderBy('created_at_ms', 'asc'))
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (cancelled) return
+        const mapped = snapshot.docs.map((doc) => {
+          const data = doc.data()
+          const createdAtRaw = data?.created_at
+          const createdAtMs = typeof data?.created_at_ms === 'number' ? data.created_at_ms : null
+
+          let createdAt: string | null = null
+          if (typeof createdAtRaw === 'string' && createdAtRaw.trim()) {
+            createdAt = createdAtRaw
+          } else if (createdAtMs !== null) {
+            createdAt = new Date(createdAtMs).toISOString()
+          } else if (createdAtRaw && typeof createdAtRaw.toDate === 'function') {
+            try {
+              const maybeDate = createdAtRaw.toDate()
+              createdAt = maybeDate instanceof Date && !Number.isNaN(maybeDate.getTime())
+                ? maybeDate.toISOString()
+                : null
+            } catch {
+              createdAt = null
+            }
+          }
+
+          return {
+            id: doc.id,
+            author_uid: typeof data?.author_uid === 'string' ? data.author_uid : '',
+            body: typeof data?.body === 'string' ? data.body : '',
+            created_at: createdAt,
+            created_at_ms: createdAtMs,
+          }
+        })
+
+        setMessages(mapped)
+        setLoading(false)
+      },
+      (snapshotError) => {
+        if (cancelled) return
+        console.error('[MessageThread] realtime error', snapshotError)
+        setError(snapshotError instanceof Error ? snapshotError.message : 'Failed to load messages')
+        setMessages([])
+        setLoading(false)
+      }
+    )
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [allowRealtime, conversationId, idToken])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -125,8 +203,9 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       if (!res.ok) {
         throw new Error(payload.error || 'Failed to send message')
       }
-      const message: Message = payload
-      setMessages((prev) => [...prev, message])
+      if (!allowRealtime) {
+        await fetchMessages(idToken)
+      }
       setInput('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send message'
