@@ -134,9 +134,10 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         )
       }
-      otherParticipant = ownerUid
+      otherParticipant = requesterUid
     }
 
+    const participantUids = Array.from(new Set([ownerUid, otherParticipant]))
     const pairKey = buildConversationPairKey(ownerUid, otherParticipant)
     const conversationsCol = firestore.collection('conversations')
 
@@ -151,7 +152,22 @@ export async function POST(req: NextRequest) {
       const existingSnap = await tx.get(query)
       if (!existingSnap.empty) {
         const doc = existingSnap.docs[0]
-        return { id: doc.id, data: doc.data() }
+        const data = doc.data()
+        const currentParticipants = sanitizeStringArray(data?.participant_uids)
+        const ensuredParticipants = Array.from(
+          new Set([...currentParticipants, ...participantUids])
+        )
+        const currentSet = new Set(currentParticipants)
+        const needsUpdate =
+          ensuredParticipants.length !== currentParticipants.length ||
+          ensuredParticipants.some((uid) => !currentSet.has(uid))
+
+        if (needsUpdate) {
+          tx.update(doc.ref, { participant_uids: ensuredParticipants })
+        }
+        data.participant_uids = ensuredParticipants
+
+        return { id: doc.id, data }
       }
 
       const docRef = conversationsCol.doc()
@@ -159,7 +175,7 @@ export async function POST(req: NextRequest) {
         listing_id: listingId,
         listing_owner_uid: ownerUid,
         listing_title: listing?.title ?? null,
-        participant_uids: [ownerUid, otherParticipant],
+        participant_uids: participantUids,
         participant_pair_key: pairKey,
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
@@ -174,7 +190,7 @@ export async function POST(req: NextRequest) {
           listing_id: listingId,
           listing_owner_uid: ownerUid,
           listing_title: listing?.title ?? null,
-          participant_uids: [ownerUid, otherParticipant],
+          participant_uids: participantUids,
           participant_pair_key: pairKey,
           created_at: nowIso,
           updated_at: nowIso,
@@ -208,11 +224,15 @@ export async function GET(req: NextRequest) {
     const firestore = getFirestore()
     const col = firestore.collection('conversations')
 
+    console.log(`Fetching up to ${limit} conversations for user ${requesterUid}`);
+
     const snapshot = await col
       .where('participant_uids', 'array-contains', requesterUid)
       .orderBy('updated_at', 'desc')
       .limit(limit)
       .get()
+    
+    console.log('Fetched conversations:', snapshot.size);
 
     const conversations = snapshot.docs.map((doc) => mapConversation(doc.id, doc.data()))
 

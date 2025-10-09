@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import AuthGuard from '@/components/AuthGuard';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import AuthGuard from '@/components/AuthGuard';
+import { ensureConversation } from '@/lib/api/chat';
 import type { ListingDoc } from '@/lib/types/listing';
 
 type ListingUserResponse = ListingDoc & {
@@ -20,6 +22,7 @@ type InterestedResponse = {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const [listings, setListings] = useState<ListingDoc[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +36,9 @@ export default function Dashboard() {
 
   // Track current user UID to compute “others interested”
   const [userUid, setUserUid] = useState<string | null>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const [messagingListingId, setMessagingListingId] = useState<string | null>(null);
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -57,6 +63,7 @@ export default function Dashboard() {
             }
             return;
           }
+          setIdToken(idToken);
           await Promise.all([fetchUserListings(idToken), fetchInterested(idToken)]);
           return;
         }
@@ -64,26 +71,29 @@ export default function Dashboard() {
         const { getAuth, onAuthStateChanged } = mod;
         const auth = getAuth();
 
-        unsub = onAuthStateChanged(auth, async (user) => {
-          if (cancelled) return;
-          if (!user) {
-            setUserUid(null);
-            setLoading(false);
-            setError('Not authenticated');
-            setListings([]);
-            setInterestedLoading(false);
-            setInterestedError('Not authenticated');
+          unsub = onAuthStateChanged(auth, async (user) => {
+            if (cancelled) return;
+            if (!user) {
+              setUserUid(null);
+              setIdToken(null);
+              setLoading(false);
+              setError('Not authenticated');
+              setListings([]);
+              setInterestedLoading(false);
+              setInterestedError('Not authenticated');
             setInterested([]);
             return;
           }
           try {
             const idToken = await user.getIdToken();
             setUserUid(user.uid);
+            setIdToken(idToken);
             await Promise.all([fetchUserListings(idToken), fetchInterested(idToken)]);
           } catch {
             try {
               const fresh = await user.getIdToken(true);
               setUserUid(user.uid);
+              setIdToken(fresh);
               await Promise.all([fetchUserListings(fresh), fetchInterested(fresh)]);
             } catch (err) {
               if (!cancelled) {
@@ -175,6 +185,25 @@ export default function Dashboard() {
     };
   }, []);
 
+  const startConversationForListing = async (listingId: string) => {
+    if (!idToken) {
+      router.push(`/login?redirect=/dashboard`);
+      return;
+    }
+
+    setMessagingListingId(listingId);
+    setMessageError(null);
+    try {
+      const conversation = await ensureConversation({ token: idToken, listingId });
+      router.push(`/messages?conversation=${conversation.id}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to open conversation';
+      setMessageError(message);
+    } finally {
+      setMessagingListingId(null);
+    }
+  };
+
   // ---- Render helpers
   // ---- Render helpers (SYNC)
 const renderListingCardOwned = (l: ListingUserResponse) => {
@@ -218,10 +247,9 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
 
 const renderListingCardSubscribed = (l: ListingUserResponse) => {
   const firstImageId = Array.isArray(l.image_urls) && l.image_urls[0] ? l.image_urls[0] : null;
-  const img = firstImageId
+  const img = firstImageId;
 
-  const rawCount = l.interested_user_count
-  console.log({ rawCount, l, userUid });
+  const rawCount = l.interested_user_count;
   const hasSelf = !!userUid && Array.isArray(l.interested_users_uids)
     ? l.interested_users_uids.includes(userUid)
     : false;
@@ -250,9 +278,14 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
         <Link href={`/listings/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors">
           View
         </Link>
-        <Link href={`/messages/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors">
-          Message Owner
-        </Link>
+        <button
+          type="button"
+          onClick={() => void startConversationForListing(l.id)}
+          disabled={messagingListingId === l.id}
+          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-60"
+        >
+          {messagingListingId === l.id ? 'Opening…' : 'Message Owner'}
+        </button>
       </div>
     </li>
   );
@@ -304,6 +337,9 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {interested.map((l) => renderListingCardSubscribed(l as ListingUserResponse))}
             </ul>
+            {messageError ? (
+              <div className="mt-3 text-sm text-red-600">{messageError}</div>
+            ) : null}
 
             {/* Pagination */}
             <div className="mt-4">
