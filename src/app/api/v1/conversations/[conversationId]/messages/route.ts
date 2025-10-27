@@ -52,6 +52,28 @@ const sanitizeStringArray = (value: unknown): string[] => {
     .filter((item): item is string => item.length > 0)
 }
 
+const mapParticipantProfiles = (value: unknown): Record<string, string | null> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([uid, raw]) => {
+      if (typeof uid !== 'string' || !uid.trim()) return null
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim()
+        return [uid, trimmed.length ? trimmed : null] as const
+      }
+      return [uid, null] as const
+    })
+    .filter((item): item is readonly [string, string | null] => item !== null)
+
+  return Object.fromEntries(entries)
+}
+
+const sanitizeString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length ? trimmed : null
+}
+
 const mapMessage = (
   id: string,
   conversationId: string,
@@ -118,7 +140,17 @@ export async function GET(
       ? { cursor_created_at_ms: oldest.created_at_ms }
       : null
 
-    return NextResponse.json({ messages, next_cursor: nextCursor })
+    const participantProfiles = mapParticipantProfiles(conversationSnap.get('participant_profiles'))
+    const listingTitle = sanitizeString(conversationSnap.get('listing_title'))
+    const listingOwnerUid = sanitizeString(conversationSnap.get('listing_owner_uid'))
+
+    return NextResponse.json({
+      messages,
+      next_cursor: nextCursor,
+      participant_profiles: participantProfiles,
+      listing_title: listingTitle,
+      listing_owner_uid: listingOwnerUid,
+    })
   } catch (err) {
     console.error('[conversation messages] GET error', err)
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })

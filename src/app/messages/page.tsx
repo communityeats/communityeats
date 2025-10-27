@@ -22,6 +22,15 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
     return conversation.participant_uids.find((uid) => uid !== currentUid) ?? null
   }, [conversation.participant_uids, currentUid])
 
+  const participantNames = conversation.participant_profiles ?? {}
+  const otherParticipantName = otherParticipant ? participantNames[otherParticipant] ?? otherParticipant : null
+  const lastAuthorUid = conversation.last_message_author_uid
+  const lastAuthorLabel = lastAuthorUid
+    ? lastAuthorUid === currentUid
+      ? 'You'
+      : participantNames[lastAuthorUid] ?? lastAuthorUid
+    : null
+
   const lastMessageTime = conversation.last_message_at
     ? new Date(conversation.last_message_at)
     : conversation.updated_at
@@ -46,10 +55,14 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
             {conversation.listing_title || 'Listing'}
           </h3>
           <p className="text-xs text-gray-500 truncate">
-            {conversation.last_message_preview || 'No messages yet'}
+            {conversation.last_message_preview
+              ? lastAuthorLabel
+                ? `${lastAuthorLabel}: ${conversation.last_message_preview}`
+                : conversation.last_message_preview
+              : 'No messages yet'}
           </p>
           <p className="text-xs text-gray-400">
-            {otherParticipant ? `With ${otherParticipant}` : 'Conversation'}
+            {otherParticipantName ? `With ${otherParticipantName}` : 'Conversation'}
           </p>
         </div>
         <span className="text-[11px] text-gray-500 whitespace-nowrap">{formattedTime}</span>
@@ -139,6 +152,16 @@ export default function MessagesPage() {
   }
 
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) ?? null
+  const selectedConversationNames = selectedConversation
+    ? selectedConversation.participant_uids
+        .filter((uid) => uid !== currentUid)
+        .map((uid) => {
+          const nameMap = selectedConversation.participant_profiles ?? {}
+          const label = nameMap[uid]
+          return label && label.trim() ? label : uid
+        })
+        .join(', ')
+    : ''
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -211,10 +234,7 @@ export default function MessagesPage() {
                       {selectedConversation.listing_title || 'Listing'}
                     </h2>
                     <p className="text-xs text-gray-500">
-                      Conversation with{' '}
-                      {selectedConversation.participant_uids
-                        .filter((uid) => uid !== currentUid)
-                        .join(', ') || 'participant'}
+                      Conversation with {selectedConversationNames || 'participant'}
                     </p>
                   </div>
                   <Link

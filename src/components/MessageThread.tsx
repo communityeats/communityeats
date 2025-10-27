@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, FormEvent } from 'react'
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase/client'
 
 interface Message {
@@ -10,6 +10,23 @@ interface Message {
   body: string
   created_at: string | null
   created_at_ms: number | null
+}
+
+const toNameMap = (value: unknown): Record<string, string | null> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string | null>>(
+    (acc, [uid, raw]) => {
+      if (typeof uid !== 'string' || !uid.trim()) return acc
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim()
+        acc[uid] = trimmed.length ? trimmed : null
+        return acc
+      }
+      acc[uid] = null
+      return acc
+    },
+    {}
+  )
 }
 
 type MessageThreadProps = {
@@ -24,6 +41,16 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
   const [sending, setSending] = useState<boolean>(false)
   const [input, setInput] = useState<string>('')
   const [allowRealtime, setAllowRealtime] = useState<boolean>(false)
+  const [participantNames, setParticipantNames] = useState<Record<string, string | null>>({})
+  const [currentUid, setCurrentUid] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setMessages([])
+    setInput('')
+    setParticipantNames({})
+  }, [conversationId])
 
   useEffect(() => {
     let cancelled = false
@@ -49,21 +76,25 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
           if (!user) {
             setIdToken(null)
             setAllowRealtime(true)
+            setCurrentUid(null)
             return
           }
           try {
             const token = await user.getIdToken()
             if (!cancelled) setIdToken(token)
             setAllowRealtime(true)
+            setCurrentUid(user.uid)
           } catch {
             try {
               const fresh = await user.getIdToken(true)
               if (!cancelled) setIdToken(fresh)
               setAllowRealtime(true)
+              setCurrentUid(user.uid)
             } catch (err: unknown) {
               console.error('[MessageThread] failed to refresh token', err)
               if (!cancelled) setIdToken(null)
               setAllowRealtime(true)
+              setCurrentUid(null)
             }
           }
         })
@@ -93,6 +124,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         const payload = (await res.json().catch(() => ({}))) as {
           error?: string
           messages?: Message[]
+          participant_profiles?: Record<string, string | null>
         }
         if (!res.ok) {
           throw new Error(payload.error || 'Failed to load messages')
@@ -106,6 +138,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
             }))
           : []
         setMessages(mapped)
+        setParticipantNames(toNameMap(payload.participant_profiles))
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load messages')
         setMessages([])
@@ -131,7 +164,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
     const messagesRef = collection(firestore, 'conversations', conversationId, 'messages')
     const q = query(messagesRef, orderBy('created_at_ms', 'asc'))
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeMessages = onSnapshot(
       q,
       (snapshot) => {
         if (cancelled) return
@@ -177,9 +210,29 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       }
     )
 
+    const conversationRef = doc(firestore, 'conversations', conversationId)
+    const unsubscribeConversation = onSnapshot(
+      conversationRef,
+      (snapshot) => {
+        if (cancelled) return
+        if (!snapshot.exists()) {
+          setParticipantNames({})
+          setError('Conversation not found')
+          return
+        }
+        const data = snapshot.data()
+        setParticipantNames(toNameMap(data?.participant_profiles))
+      },
+      (snapshotError) => {
+        if (cancelled) return
+        console.error('[MessageThread] conversation realtime error', snapshotError)
+      }
+    )
+
     return () => {
       cancelled = true
-      unsubscribe()
+      unsubscribeMessages()
+      unsubscribeConversation()
     }
   }, [allowRealtime, conversationId, idToken])
 
@@ -199,12 +252,18 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         },
         body: JSON.stringify({ body: trimmed }),
       })
-      const payload = (await res.json().catch(() => ({}))) as Message & { error?: string }
+      const payload = (await res.json().catch(() => ({}))) as Message & {
+        error?: string
+        participant_profiles?: Record<string, string | null>
+      }
       if (!res.ok) {
         throw new Error(payload.error || 'Failed to send message')
       }
       if (!allowRealtime) {
         await fetchMessages(idToken)
+      }
+      if (payload.participant_profiles) {
+        setParticipantNames(toNameMap(payload.participant_profiles))
       }
       setInput('')
     } catch (err: unknown) {
@@ -231,15 +290,21 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         ) : error ? (
           <div className="text-sm text-red-600">{error}</div>
         ) : messages.length ? (
-          messages.map((m) => (
-            <div key={m.id} className="bg-white border rounded p-2">
-              <div className="text-xs text-gray-500 mb-1">
-                <span className="font-medium">{m.author_uid}</span>{' '}
-                <span>{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
+          messages.map((m) => {
+            const authorLabel =
+              m.author_uid === currentUid
+                ? 'You'
+                : participantNames[m.author_uid] ?? m.author_uid
+            return (
+              <div key={m.id} className="bg-white border rounded p-2">
+                <div className="text-xs text-gray-500 mb-1">
+                  <span className="font-medium">{authorLabel}</span>{' '}
+                  <span>{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
+                </div>
+                <p className="text-sm text-gray-800 whitespace-pre-line">{m.body}</p>
               </div>
-              <p className="text-sm text-gray-800 whitespace-pre-line">{m.body}</p>
-            </div>
-          ))
+            )
+          })
         ) : (
           <div className="text-sm text-gray-600">No messages yet.</div>
         )}
@@ -247,13 +312,13 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
 
       <form onSubmit={handleSubmit} className="border-t p-3 space-y-2">
         <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          className="w-full border rounded p-2 text-sm"
-          rows={3}
-          placeholder="Write a message…"
-          disabled={sending}
-        />
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+        className="w-full border rounded p-2 text-sm"
+        rows={3}
+        placeholder="Say something nice!"
+        disabled={sending}
+      />
         <div className="flex justify-end">
           <button
             type="submit"

@@ -44,6 +44,22 @@ const sanitizeStringArray = (value: unknown): string[] => {
     .filter((item): item is string => item.length > 0)
 }
 
+const mapParticipantProfiles = (value: unknown): Record<string, string | null> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([uid, raw]) => {
+      if (typeof uid !== 'string' || !uid.trim()) return null
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim()
+        return [uid, trimmed.length ? trimmed : null] as const
+      }
+      return [uid, null] as const
+    })
+    .filter((item): item is readonly [string, string | null] => item !== null)
+
+  return Object.fromEntries(entries)
+}
+
 const mapConversation = (
   id: string,
   data: FirebaseFirestore.DocumentData
@@ -53,6 +69,7 @@ const mapConversation = (
   listing_owner_uid: typeof data?.listing_owner_uid === 'string' ? data.listing_owner_uid : '',
   listing_title: typeof data?.listing_title === 'string' ? data.listing_title : null,
   participant_uids: sanitizeStringArray(data?.participant_uids),
+  participant_profiles: mapParticipantProfiles(data?.participant_profiles),
   participant_pair_key: typeof data?.participant_pair_key === 'string' ? data.participant_pair_key : '',
   created_at: toIso(data?.created_at),
   updated_at: toIso(data?.updated_at),
@@ -62,6 +79,32 @@ const mapConversation = (
   last_message_author_uid:
     typeof data?.last_message_author_uid === 'string' ? data.last_message_author_uid : null,
 })
+
+const fetchParticipantProfiles = async (
+  uids: string[]
+): Promise<Record<string, string | null>> => {
+  const auth = getAuth()
+  const uniqueUids = Array.from(
+    new Set(uids.filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0))
+  )
+
+  const entries = await Promise.all(
+    uniqueUids.map(async (uid) => {
+      try {
+        const record = await auth.getUser(uid)
+        const trimmed = record.displayName?.trim()
+        return [uid, trimmed && trimmed.length ? trimmed : null] as const
+      } catch {
+        return [uid, null] as const
+      }
+    })
+  )
+
+  return entries.reduce<Record<string, string | null>>((acc, [uid, name]) => {
+    acc[uid] = name
+    return acc
+  }, {})
+}
 
 async function resolveAuthUid(req: NextRequest): Promise<string | null> {
   const header = req.headers.get('authorization') ?? req.headers.get('Authorization')
@@ -138,6 +181,7 @@ export async function POST(req: NextRequest) {
     }
 
     const participantUids = Array.from(new Set([ownerUid, otherParticipant]))
+    const participantProfiles = await fetchParticipantProfiles(participantUids)
     const pairKey = buildConversationPairKey(ownerUid, otherParticipant)
     const conversationsCol = firestore.collection('conversations')
 
@@ -161,21 +205,46 @@ export async function POST(req: NextRequest) {
         const needsUpdate =
           ensuredParticipants.length !== currentParticipants.length ||
           ensuredParticipants.some((uid) => !currentSet.has(uid))
+        const existingProfiles = mapParticipantProfiles(data?.participant_profiles)
 
-        if (needsUpdate) {
-          tx.update(doc.ref, { participant_uids: ensuredParticipants })
+        const mergedProfiles = ensuredParticipants.reduce<Record<string, string | null>>(
+          (acc, uid) => {
+            const fetched = participantProfiles[uid]
+            const existing = existingProfiles[uid]
+            acc[uid] = typeof fetched === 'string' || fetched === null ? fetched : existing ?? null
+            return acc
+          },
+          {}
+        )
+
+        const needsProfileUpdate = ensuredParticipants.some(
+          (uid) => (existingProfiles[uid] ?? null) !== (mergedProfiles[uid] ?? null)
+        ) || Object.keys(existingProfiles).length !== ensuredParticipants.length
+
+        if (needsUpdate || needsProfileUpdate) {
+          const payload: Record<string, unknown> = {}
+          if (needsUpdate) payload.participant_uids = ensuredParticipants
+          if (needsProfileUpdate) payload.participant_profiles = mergedProfiles
+          tx.update(doc.ref, payload)
         }
         data.participant_uids = ensuredParticipants
+        data.participant_profiles = mergedProfiles
 
         return { id: doc.id, data }
       }
 
       const docRef = conversationsCol.doc()
+      const initialProfiles = participantUids.reduce<Record<string, string | null>>((acc, uid) => {
+        acc[uid] = participantProfiles[uid] ?? null
+        return acc
+      }, {})
+
       tx.set(docRef, {
         listing_id: listingId,
         listing_owner_uid: ownerUid,
         listing_title: listing?.title ?? null,
         participant_uids: participantUids,
+        participant_profiles: initialProfiles,
         participant_pair_key: pairKey,
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
@@ -191,6 +260,7 @@ export async function POST(req: NextRequest) {
           listing_owner_uid: ownerUid,
           listing_title: listing?.title ?? null,
           participant_uids: participantUids,
+          participant_profiles: initialProfiles,
           participant_pair_key: pairKey,
           created_at: nowIso,
           updated_at: nowIso,
@@ -224,17 +294,37 @@ export async function GET(req: NextRequest) {
     const firestore = getFirestore()
     const col = firestore.collection('conversations')
 
-    console.log(`Fetching up to ${limit} conversations for user ${requesterUid}`);
-
     const snapshot = await col
       .where('participant_uids', 'array-contains', requesterUid)
       .orderBy('updated_at', 'desc')
       .limit(limit)
       .get()
-    
-    console.log('Fetched conversations:', snapshot.size);
 
-    const conversations = snapshot.docs.map((doc) => mapConversation(doc.id, doc.data()))
+    const rawConversations = snapshot.docs.map((doc) => mapConversation(doc.id, doc.data()))
+    const allParticipantUids = rawConversations.flatMap((conversation) => conversation.participant_uids)
+    const fetchedProfiles = await fetchParticipantProfiles(allParticipantUids)
+
+    const conversations = rawConversations.map((conversation, index) => {
+      const normalizedProfiles = conversation.participant_uids.reduce<Record<string, string | null>>(
+        (acc, uid) => {
+          const existing = conversation.participant_profiles?.[uid]
+          acc[uid] = existing ?? fetchedProfiles[uid] ?? null
+          return acc
+        },
+        {}
+      )
+
+      const needsUpdate = conversation.participant_uids.some(
+        (uid) => (conversation.participant_profiles?.[uid] ?? null) !== (normalizedProfiles[uid] ?? null)
+      ) || (conversation.participant_profiles ? Object.keys(conversation.participant_profiles).length : 0) !== conversation.participant_uids.length
+
+      if (needsUpdate) {
+        const docRef = snapshot.docs[index].ref
+        void docRef.update({ participant_profiles: normalizedProfiles }).catch(() => undefined)
+      }
+
+      return { ...conversation, participant_profiles: normalizedProfiles }
+    })
 
     return NextResponse.json({ conversations })
   } catch (err) {
