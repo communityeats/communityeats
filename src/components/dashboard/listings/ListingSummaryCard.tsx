@@ -11,7 +11,6 @@ export function ListingSummaryCard({ listing, thumbnailUrl }: Props) {
       <h2 className="text-lg font-semibold mb-3">Details</h2>
 
       {thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={thumbnailUrl}
           alt={listing.title}

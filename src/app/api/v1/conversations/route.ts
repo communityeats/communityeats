@@ -222,7 +222,10 @@ export async function POST(req: NextRequest) {
         ) || Object.keys(existingProfiles).length !== ensuredParticipants.length
 
         if (needsUpdate || needsProfileUpdate) {
-          const payload: Record<string, unknown> = {}
+          const payload: FirebaseFirestore.UpdateData<{
+            participant_uids?: string[]
+            participant_profiles?: Record<string, string | null>
+          }> = {}
           if (needsUpdate) payload.participant_uids = ensuredParticipants
           if (needsProfileUpdate) payload.participant_profiles = mergedProfiles
           tx.update(doc.ref, payload)

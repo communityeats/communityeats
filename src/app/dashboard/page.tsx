@@ -217,7 +217,6 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
   return (
     <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
       {img ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={img} alt={l.title || l.id} className="w-full h-40 object-cover" />
       ) : (
         <div className="w-full h-40 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
@@ -258,7 +257,6 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
   return (
     <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
       {img ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={img} alt={l.title || l.id} className="w-full h-40 object-cover" />
       ) : (
         <div className="w-full h-40 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">

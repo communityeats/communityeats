@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -71,7 +71,7 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
   )
 }
 
-export default function MessagesPage() {
+function MessagesPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [idToken, setIdToken] = useState<string | null>(null)
@@ -257,5 +257,13 @@ export default function MessagesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-gray-600">Loading messages…</div>}>
+      <MessagesPageContent />
+    </Suspense>
   )
 }

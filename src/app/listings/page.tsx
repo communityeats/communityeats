@@ -148,7 +148,7 @@ export default function ListingsPage() {
         })
     }
 
-    return listings.map((listing) => ({ ...listing, distanceKm: listing.distanceKm ?? null }))
+    return listings.map((listing) => ({ ...listing, distanceKm: null }))
   }, [listings, sortOption, userCoords])
 
   return (
