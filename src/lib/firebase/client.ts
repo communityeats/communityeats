@@ -1,7 +1,8 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -18,7 +19,19 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+const firestore = getFirestore(app);
+
+if (typeof window !== 'undefined') {
+  const emulatorHost = process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST;
+  if (emulatorHost) {
+    const [host, port] = emulatorHost.split(':');
+    if (host && port) {
+      connectFirestoreEmulator(firestore, host, Number(port));
+    }
+  }
+}
 
 if (typeof window !== 'undefined') {
   isSupported().then((supported) => {
@@ -29,3 +42,4 @@ if (typeof window !== 'undefined') {
 }
 
 export const auth = getAuth(app);
+export { app, firestore };
