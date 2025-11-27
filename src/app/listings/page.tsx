@@ -248,6 +248,7 @@ export default function ListingsPage() {
                   ...listing,
                   imageURL: listing.thumbnail_url || '/placeholder.png',
                 }}
+                hideImage
               />
             ))}
           </div>
