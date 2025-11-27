@@ -63,45 +63,6 @@ export default function ListingsPage() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
 
-  const fetchListings = useCallback(
-    async (pageToFetch: number, isLoadMore: boolean) => {
-      if (isLoadMore) {
-        setLoadingMore(true)
-      } else {
-        setLoading(true)
-        setError(null)
-      }
-      try {
-        const res = await fetch(`/api/v1/listings?limit=${PAGE_LIMIT}&page=${pageToFetch}`)
-        if (!res.ok) throw new Error('Failed to fetch listings')
-        const data: Listing[] = await res.json()
-        setListings((prev) => (pageToFetch === 1 ? data : [...prev, ...data]))
-        setHasMore(data.length === PAGE_LIMIT)
-        setPage(pageToFetch)
-      } catch (err: unknown) {
-        console.error(err)
-        setError((err as Error).message || 'Something went wrong')
-      } finally {
-        if (isLoadMore) {
-          setLoadingMore(false)
-        } else {
-          setLoading(false)
-        }
-      }
-    },
-    []
-  )
-
-  useEffect(() => {
-    fetchListings(1, false)
-  }, [fetchListings])
-
-  const handleLoadMore = () => {
-    if (loadingMore || !hasMore) return
-    const nextPage = page + 1
-    fetchListings(nextPage, true)
-  }
-
   const ensureLocation = useCallback(() => {
     if (userCoords) return Promise.resolve(true)
 
@@ -134,6 +95,75 @@ export default function ListingsPage() {
       )
     })
   }, [userCoords])
+
+  const fetchListings = useCallback(
+    async (pageToFetch: number, isLoadMore: boolean) => {
+      if (sortOption === 'nearest' && !userCoords) {
+        // Nearest requires a known user location to construct the query.
+        return
+      }
+
+      if (isLoadMore) {
+        setLoadingMore(true)
+      } else {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        const params = new URLSearchParams({
+          limit: PAGE_LIMIT.toString(),
+          page: pageToFetch.toString(),
+          sort: sortOption,
+        })
+
+        if (sortOption === 'nearest' && userCoords) {
+          params.set('lat', userCoords.latitude.toString())
+          params.set('lon', userCoords.longitude.toString())
+        }
+
+        const res = await fetch(`/api/v1/listings?${params.toString()}`)
+        if (!res.ok) throw new Error('Failed to fetch listings')
+        const data: Listing[] = await res.json()
+        setListings((prev) => (pageToFetch === 1 ? data : [...prev, ...data]))
+        setHasMore(data.length === PAGE_LIMIT)
+        setPage(pageToFetch)
+      } catch (err: unknown) {
+        console.error(err)
+        setError((err as Error).message || 'Something went wrong')
+      } finally {
+        if (isLoadMore) {
+          setLoadingMore(false)
+        } else {
+          setLoading(false)
+        }
+      }
+    },
+    [sortOption, userCoords]
+  )
+
+  useEffect(() => {
+    const load = async () => {
+      if (sortOption === 'nearest') {
+        const gotLocation = await ensureLocation()
+        if (!gotLocation) {
+          setListings([])
+          setHasMore(false)
+          setLoading(false)
+          return
+        }
+      }
+
+      fetchListings(1, false)
+    }
+
+    load()
+  }, [fetchListings, sortOption, ensureLocation])
+
+  const handleLoadMore = () => {
+    if (loadingMore || !hasMore) return
+    const nextPage = page + 1
+    fetchListings(nextPage, true)
+  }
 
   const handleSortChange = useCallback(
     async (event: ChangeEvent<HTMLSelectElement>) => {
@@ -241,7 +271,7 @@ export default function ListingsPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {listings.map((listing) => (
+            {displayListings.map((listing) => (
               <ListingCard
                 key={listing.id}
                 listing={{
