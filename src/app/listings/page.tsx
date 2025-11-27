@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import ListingCard from '@/components/ListingCard'
 
@@ -10,28 +10,54 @@ type Listing = {
   thumbnail_url?: string
 }
 
+const PAGE_LIMIT = 9
+
 export default function ListingsPage() {
   const [listings, setListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  useEffect(() => {
-    const fetchListings = async () => {
+  const fetchListings = useCallback(
+    async (pageToFetch: number, isLoadMore: boolean) => {
+      if (isLoadMore) {
+        setLoadingMore(true)
+      } else {
+        setLoading(true)
+        setError(null)
+      }
       try {
-        const res = await fetch('/api/v1/listings')
+        const res = await fetch(`/api/v1/listings?limit=${PAGE_LIMIT}&page=${pageToFetch}`)
         if (!res.ok) throw new Error('Failed to fetch listings')
-        const data = await res.json()
-        setListings(data)
+        const data: Listing[] = await res.json()
+        setListings((prev) => (pageToFetch === 1 ? data : [...prev, ...data]))
+        setHasMore(data.length === PAGE_LIMIT)
+        setPage(pageToFetch)
       } catch (err: unknown) {
         console.error(err)
         setError((err as Error).message || 'Something went wrong')
       } finally {
-        setLoading(false)
+        if (isLoadMore) {
+          setLoadingMore(false)
+        } else {
+          setLoading(false)
+        }
       }
-    }
+    },
+    []
+  )
 
-    fetchListings()
-  }, [])
+  useEffect(() => {
+    fetchListings(1, false)
+  }, [fetchListings])
+
+  const handleLoadMore = () => {
+    if (loadingMore || !hasMore) return
+    const nextPage = page + 1
+    fetchListings(nextPage, true)
+  }
 
   return (
     <section className="space-y-6">
@@ -58,17 +84,31 @@ export default function ListingsPage() {
           !
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map((listing) => (
-            <ListingCard
-              key={listing.id}
-              listing={{
-                ...listing,
-                imageURL: listing.thumbnail_url || '/placeholder.png',
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {listings.map((listing) => (
+              <ListingCard
+                key={listing.id}
+                listing={{
+                  ...listing,
+                  imageURL: listing.thumbnail_url || '/placeholder.png',
+                }}
+              />
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:opacity-60"
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

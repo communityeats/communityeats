@@ -23,8 +23,8 @@ type Listing = {
   }
   status?: string
   created_at?: string
-  has_registered?: boolean // <-- Add this line
-  user_id?: string // <-- Add this line
+  has_registered?: boolean
+  user_id?: string
 }
 
 export default function ListingDetailClient({ id }: { id: string }) {

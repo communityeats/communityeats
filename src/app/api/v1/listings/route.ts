@@ -11,11 +11,14 @@ export async function GET(req: NextRequest) {
 
     const status = searchParams.get('status') ?? 'available'
     const limitCount = parseInt(searchParams.get('limit') || '20', 10)
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1)
+    const offset = (page - 1) * limitCount
 
     const snapshot = await firestore
       .collection('listings')
       .where('status', '==', status)
       .orderBy('created_at', 'desc')
+      .offset(offset)
       .limit(limitCount)
       .get()
 
