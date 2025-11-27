@@ -3,30 +3,31 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import type { ListingDoc } from '@/lib/types/listing'
+import {
+  isExchangeType,
+  isListingStatus,
+  normalizeListingLocation,
+  type ListingLocationInput,
+} from '@/lib/types/listing'
 
 initAdmin()
-
-const categories = ['home', 'share', 'coop'] as const
-const exchangeTypes = ['swap', 'gift', 'pay'] as const
-const statuses = ['available', 'claimed', 'closed'] as const
-
-type Category = (typeof categories)[number]
-type ExchangeType = (typeof exchangeTypes)[number]
-type Status = (typeof statuses)[number]
 
 type PatchPayload = {
   id: string
   title?: string
   description?: string
-  category?: Category | string
-  exchange_type?: ExchangeType | string
-  status?: Status | string
+  exchange_type?: string
+  status?: string
   location?: {
     country?: string
     state?: string
     suburb?: string
     postcode?: number | string
   }
+  country?: string
+  state?: string
+  suburb?: string
+  postcode?: number | string
 }
 
 export async function POST(req: Request) {
@@ -80,20 +81,10 @@ export async function POST(req: Request) {
     maybeSetString('title', data.title)           // if you really want lowercasing, keep toLower=true
     maybeSetString('description', data.description)
 
-    // category
-    if (typeof data.category === 'string' && data.category.trim()) {
-      const c = data.category.trim()
-      if (!categories.includes(c as Category)) {
-        errors.push('Invalid category')
-      } else {
-        updatePaths['category'] = c
-      }
-    }
-
     // exchange_type
     if (typeof data.exchange_type === 'string' && data.exchange_type.trim()) {
       const e = data.exchange_type.trim()
-      if (!exchangeTypes.includes(e as ExchangeType)) {
+      if (!isExchangeType(e)) {
         errors.push('Invalid exchange type')
       } else {
         updatePaths['exchange_type'] = e
@@ -103,7 +94,7 @@ export async function POST(req: Request) {
     // status
     if (typeof data.status === 'string' && data.status.trim()) {
       const s = data.status.trim()
-      if (!statuses.includes(s as Status)) {
+      if (!isListingStatus(s)) {
         errors.push('Invalid status')
       } else {
         updatePaths['status'] = s
@@ -112,24 +103,78 @@ export async function POST(req: Request) {
 
     // location (dot-notation only; avoids keyof ListingDoc issues)
     if (data.location && typeof data.location === 'object') {
-      if (typeof data.location.country === 'string' && data.location.country.trim()) {
-        updatePaths['location.country'] = data.location.country.trim().toLowerCase()
-      }
-      if (typeof data.location.state === 'string' && data.location.state.trim()) {
-        updatePaths['location.state'] = data.location.state.trim().toLowerCase()
-      }
-      if (typeof data.location.suburb === 'string' && data.location.suburb.trim()) {
-        updatePaths['location.suburb'] = data.location.suburb.trim().toLowerCase()
-      }
-      if (
-        typeof data.location.postcode === 'string' ||
-        typeof data.location.postcode === 'number'
-      ) {
-        const n = Number(data.location.postcode)
-        if (Number.isFinite(n) && n >= 0) {
-          updatePaths['location.postcode'] = n
+      const loc = data.location as ListingLocationInput
+      const normalized = normalizeListingLocation(loc)
+
+      if ('country' in loc) {
+        if (!normalized.country) {
+          errors.push('Invalid location.country')
         } else {
-          errors.push('Invalid postcode')
+          updatePaths['location.country'] = normalized.country
+          updatePaths['country'] = normalized.country
+        }
+      }
+
+      if ('state' in loc) {
+        if (!normalized.state) {
+          errors.push('Invalid location.state')
+        } else {
+          updatePaths['location.state'] = normalized.state
+          updatePaths['state'] = normalized.state
+        }
+      }
+
+      if ('suburb' in loc) {
+        if (!normalized.suburb) {
+          errors.push('Invalid location.suburb')
+        } else {
+          updatePaths['location.suburb'] = normalized.suburb
+          updatePaths['suburb'] = normalized.suburb
+        }
+      }
+
+      if ('postcode' in loc) {
+        if (normalized.postcode <= 0) {
+          errors.push('Invalid location.postcode')
+        } else {
+          updatePaths['location.postcode'] = normalized.postcode
+          updatePaths['postcode'] = normalized.postcode
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'place_id')) {
+        if (normalized.place_id) {
+          updatePaths['location.place_id'] = normalized.place_id
+          updatePaths['location_place_id'] = normalized.place_id
+        } else {
+          updatePaths['location.place_id'] = null
+          updatePaths['location_place_id'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'label')) {
+        if (normalized.label) {
+          updatePaths['location.label'] = normalized.label
+          updatePaths['location_label'] = normalized.label
+        } else {
+          updatePaths['location.label'] = null
+          updatePaths['location_label'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'latitude')) {
+        if (typeof normalized.latitude === 'number') {
+          updatePaths['location.latitude'] = normalized.latitude
+        } else {
+          updatePaths['location.latitude'] = null
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(loc, 'longitude')) {
+        if (typeof normalized.longitude === 'number') {
+          updatePaths['location.longitude'] = normalized.longitude
+        } else {
+          updatePaths['location.longitude'] = null
         }
       }
     }

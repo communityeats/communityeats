@@ -49,6 +49,7 @@ export default function Navbar() {
           {user ? (
             <>
               <NavLink href="/dashboard" label="Dashboard" />
+              <NavLink href="/messages" label="Messages" />
             </>
           ) : (
             <NavLink href="/login" label="Login" />

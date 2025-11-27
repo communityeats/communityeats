@@ -8,6 +8,12 @@ let appInitialized = false
 
 export function initAdmin() {
   if (!appInitialized && getApps().length === 0) {
+    const useEmulator = process.env.FIREBASE_USE_EMULATOR === 'true'
+    if (!useEmulator && process.env.FIRESTORE_EMULATOR_HOST) {
+      // Ensure we hit production Firestore unless the emulator is explicitly requested.
+      delete process.env.FIRESTORE_EMULATOR_HOST
+    }
+
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');

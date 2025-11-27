@@ -2,70 +2,55 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import {
+  EXCHANGE_TYPES,
+  LISTING_STATUSES,
+  normalizeListingLocation,
+} from '@/lib/types/listing'
 import type {
   ListingDoc,
   ListingLocation,
-  ListingCategory,
-  ExchangeType,
-  ListingStatus,
 } from '@/lib/types/listing'
+import {
+  deleteListing as deleteListingRequest,
+  updateListing,
+  type InterestedUser,
+  type ListingPatchPayload,
+} from '@/lib/api/listings'
+import { ensureConversation } from '@/lib/api/chat'
+import { useListingAuth } from '@/hooks/useListingAuth'
+import { useListingDetail } from '@/hooks/useListingDetail'
+import { useInterestedUsers } from '@/hooks/useInterestedUsers'
+import ListingSummaryCard from '@/components/dashboard/listings/ListingSummaryCard'
+import ListingEditForm from '@/components/dashboard/listings/ListingEditForm'
+import InterestedUsersPanel from '@/components/dashboard/listings/InterestedUsersPanel'
+import type { EditFormState } from '@/components/dashboard/listings/types'
+import MessageThread from '@/components/MessageThread'
 
-// ---------- Local edit-form state (UI-friendly)
-type EditFormState = {
-  title: string
-  description: string
-  category: ListingCategory | ''          // allow empty while editing
-  exchange_type: ExchangeType | ''
-  status: ListingStatus | ''              // allow empty while editing
-  location: {
-    country: string
-    state: string
-    suburb: string
-    postcode: string                      // keep as string in inputs
-  }
+const EMPTY_EDIT_FORM: EditFormState = {
+  title: '',
+  description: '',
+  exchange_type: '',
+  status: '',
+  location: { country: '', state: '', suburb: '', postcode: '' },
 }
 
-type PatchPayload = Partial<
-  Pick<
-    ListingDoc,
-    | 'title'
-    | 'description'
-    | 'category'
-    | 'exchange_type'
-    | 'status'
-    | 'country'
-    | 'location'
-  >
->
-
-// ---- API helpers
-async function fetchListingDetail(id: string, token: string): Promise<ListingDoc> {
-  const res = await fetch(`/api/v1/listings/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error((body as { error?: string }).error || `Failed to fetch listing ${id}`)
-  }
-  return res.json()
-}
-
-async function updateListing(token: string, id: string, payload: PatchPayload) {
-  // NOTE: endpoint to be implemented server-side
-  const res = await fetch(`/api/v1/listings/update`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+function mapListingToEditForm(detail: ListingDoc): EditFormState {
+  return {
+    title: detail.title || '',
+    description: detail.description || '',
+    exchange_type: (detail.exchange_type ?? '') as EditFormState['exchange_type'],
+    status: (detail.status ?? '') as EditFormState['status'],
+    location: {
+      country: detail.location?.country || '',
+      state: detail.location?.state || '',
+      suburb: detail.location?.suburb || '',
+      postcode:
+        typeof detail.location?.postcode === 'number'
+          ? String(detail.location.postcode)
+          : '',
     },
-    body: JSON.stringify({ id, ...payload }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error((body as { error?: string }).error || 'Failed to update listing.')
   }
-  return res.json()
 }
 
 export default function ManageListingPage() {
@@ -73,155 +58,44 @@ export default function ManageListingPage() {
   const router = useRouter()
   const listingId = params?.id
 
-  // Auth bootstrap (dynamic import + localStorage fallback)
-  const [idToken, setIdToken] = useState<string | null>(null)
-  const [userUid, setUserUid] = useState<string | null>(null)
-  const [authInitError, setAuthInitError] = useState<string | null>(null)
+  const { idToken, userUid, error: authError } = useListingAuth()
+  const { listing, setListing, loading, error: detailError, setError: setDetailError } =
+    useListingDetail({ listingId, idToken, authError, userUid })
+  const {
+    users: interestedUsers,
+    loading: interestedUsersLoading,
+    error: interestedUsersError,
+  } = useInterestedUsers({ listingId, idToken, authError })
 
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  const [listing, setListing] = useState<ListingDoc | null>(null)
-
-  // Edit form
+  const [editForm, setEditForm] = useState<EditFormState>(EMPTY_EDIT_FORM)
   const [saving, setSaving] = useState(false)
-  const [editForm, setEditForm] = useState<EditFormState>({
-    title: '',
-    description: '',
-    category: '',
-    exchange_type: '',
-    status: '',
-    location: { country: '', state: '', suburb: '', postcode: '' },
-  })
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [startingConversationUid, setStartingConversationUid] = useState<string | null>(null)
+  const [conversationError, setConversationError] = useState<string | null>(null)
 
-  // --- Auth init
   useEffect(() => {
-    let unsub: (() => void) | null = null
-    let cancelled = false
+    setError(detailError)
+  }, [detailError])
 
-    const init = async () => {
-      try {
-        const mod = await import('firebase/auth').catch(() => null)
-        if (!mod) {
-          // fallback storage token only
-          const local =
-            typeof window !== 'undefined'
-              ? localStorage.getItem('idToken') || localStorage.getItem('token')
-              : null
-          if (!cancelled) {
-            setIdToken(local)
-            setAuthInitError(local ? null : 'Missing token')
-          }
-          return
-        }
-        const { getAuth, onAuthStateChanged } = mod
-        const auth = getAuth()
-        unsub = onAuthStateChanged(auth, async (user) => {
-          if (cancelled) return
-          if (!user) {
-            setIdToken(null)
-            setUserUid(null)
-            setAuthInitError('Not authenticated')
-            return
-          }
-          try {
-            const t = await user.getIdToken()
-            setIdToken(t)
-            setUserUid(user.uid)
-            setAuthInitError(null)
-          } catch {
-            try {
-              const fresh = await user.getIdToken(true)
-              setIdToken(fresh)
-              setUserUid(user.uid)
-              setAuthInitError(null)
-            } catch (err: unknown) {
-              setAuthInitError((err as { message?: string })?.message || 'Failed to init auth')
-              setIdToken(null)
-              setUserUid(null)
-            }
-          }
-        })
-      } catch (err: unknown) {
-        if (!cancelled) {
-          setAuthInitError((err as { message?: string })?.message || 'Initialization error')
-          setIdToken(null)
-          setUserUid(null)
-        }
-      }
+  useEffect(() => {
+    if (listing) {
+      setEditForm(mapListingToEditForm(listing))
+    } else {
+      setEditForm(EMPTY_EDIT_FORM)
     }
+  }, [listing])
 
-    void init()
-    return () => {
-      cancelled = true
-      if (unsub) unsub()
-    }
-  }, [])
-
-  // Prepare a possibly resolvable image URL if you have a known scheme.
   const thumbnailUrl = useMemo(() => {
     if (!listing?.thumbnail_id) return null
-    // If your backend serves files by id, replace below with the correct path.
-    // return `/api/v1/files/${listing.thumbnail_id}`
     return null
   }, [listing])
 
-  // Load listing detail once we have a token
-  useEffect(() => {
-    let mounted = true
-    const load = async () => {
-      if (!listingId) return
-      setLoading(true)
-      setError(null)
-      try {
-        if (!idToken) {
-          if (authInitError) throw new Error(authInitError)
-          // wait for auth
-          return
-        }
-        const detail = await fetchListingDetail(listingId, idToken)
-        if (!mounted) return
-
-        // Ownership check (client-side guard; server should also enforce)
-        if (detail?.user_id && userUid && detail.user_id !== userUid) {
-          setError('You do not have permission to manage this listing.')
-          setListing(null)
-          setLoading(false)
-          return
-        }
-
-        setListing(detail)
-        setEditForm({
-          title: detail.title || '',
-          description: detail.description || '',
-          category: (detail.category ?? '') as ListingCategory | '',
-          exchange_type: (detail.exchange_type ?? '') as ExchangeType | '',
-          status: (detail.status ?? '') as ListingStatus | '',
-          location: {
-            country: detail.location?.country || '',
-            state: detail.location?.state || '',
-            suburb: detail.location?.suburb || '',
-            postcode:
-              typeof detail.location?.postcode === 'number'
-                ? String(detail.location.postcode)
-                : '',
-          },
-        })
-      } catch (e: unknown) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Failed to load listing')
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-    void load()
-    return () => {
-      mounted = false
-    }
-  }, [listingId, idToken, authInitError, userUid])
-
   const handleEditChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    const { name, value } = e.target
+    const { name, value } = event.target
     if (name.startsWith('location.')) {
       const key = name.split('.')[1] as keyof ListingLocation
       setEditForm((prev) => ({
@@ -235,12 +109,15 @@ export default function ManageListingPage() {
 
   const saveEdits = async () => {
     if (!listing || !listingId) return
+    if (!idToken) {
+      setError('You must be signed in to edit a listing.')
+      return
+    }
+
     setSaving(true)
     setError(null)
-    try {
-      if (!idToken) throw new Error('You must be signed in to edit a listing.')
 
-      // Coerce postcode to number iff present and numeric
+    try {
       const postcodeNum =
         editForm.location.postcode.trim() !== '' ? Number(editForm.location.postcode) : undefined
       if (
@@ -250,38 +127,50 @@ export default function ManageListingPage() {
         throw new Error('Postcode must be a number.')
       }
 
-      const normalizedLocation: ListingLocation | undefined =
-        editForm.location.country ||
-        editForm.location.state ||
-        editForm.location.suburb ||
-        editForm.location.postcode
-          ? {
-              country: (editForm.location.country || '').toLowerCase(),
-              state: (editForm.location.state || '').toLowerCase(),
-              suburb: (editForm.location.suburb || '').toLowerCase(),
-              // If postcode omitted, fall back to previous value to satisfy required field on server.
+      const rawLocation = {
+        country: editForm.location.country,
+        state: editForm.location.state,
+        suburb: editForm.location.suburb,
+        postcode: editForm.location.postcode,
+      }
+
+      const hasLocationInput = Object.values(rawLocation).some((val) => val.trim() !== '')
+
+      const normalizedLocation = hasLocationInput
+        ? (() => {
+            const normalized = normalizeListingLocation({
+              ...rawLocation,
               postcode:
                 postcodeNum ??
                 (typeof listing.location?.postcode === 'number'
                   ? listing.location.postcode
-                  : 0),
-            }
-          : undefined
+                  : null),
+            })
 
-      const payload: PatchPayload = {
+            if (
+              !normalized.country ||
+              !normalized.state ||
+              !normalized.suburb ||
+              normalized.postcode <= 0
+            ) {
+              throw new Error('Location requires country, state, suburb, and a positive postcode.')
+            }
+
+            return normalized
+          })()
+        : undefined
+
+      const payload: ListingPatchPayload = {
         title: (editForm.title || '').toLowerCase(),
         description: (editForm.description || '').toLowerCase(),
-        category: editForm.category || undefined,
         exchange_type: editForm.exchange_type || undefined,
         status: editForm.status || undefined,
-        // Keep top-level country in sync with location.country if provided
         country: normalizedLocation?.country,
         location: normalizedLocation,
       }
 
       await updateListing(idToken, listingId, payload)
 
-      // Optimistic update locally
       setListing((prev) =>
         prev
           ? {
@@ -292,15 +181,69 @@ export default function ManageListingPage() {
             }
           : prev
       )
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save changes')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save changes'
+      setError(message)
+      setDetailError(message)
     } finally {
       setSaving(false)
     }
   }
 
-  const interestedIds = listing?.interested_users_uids ?? []
-  const interestedCount = interestedIds.length
+  const handleStartConversation = async (targetUid: string) => {
+    if (!listingId) return
+    if (!idToken) {
+      setError('You must be signed in to message interested users.')
+      return
+    }
+
+    setStartingConversationUid(targetUid)
+    setConversationError(null)
+    try {
+      const conversation = await ensureConversation({
+        token: idToken,
+        listingId,
+        targetUserUid: targetUid,
+      })
+      setActiveConversationId(conversation.id)
+      router.push(`/messages?conversation=${conversation.id}`, { scroll: false })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to open conversation'
+      setConversationError(message)
+    } finally {
+      setStartingConversationUid(null)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!listingId) return
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Are you sure you want to delete this listing? This cannot be undone.')
+      if (!confirmed) return
+    }
+
+    if (!idToken) {
+      setError('You must be signed in to delete a listing.')
+      return
+    }
+
+    setDeleting(true)
+    setError(null)
+
+    try {
+      await deleteListingRequest(idToken, listingId)
+      router.push('/dashboard?deleted=1')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete listing'
+      setError(message)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const fallbackInterestedIds: string[] =
+    listing && Array.isArray(listing.interested_users_uids) ? listing.interested_users_uids : []
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -322,180 +265,56 @@ export default function ManageListingPage() {
         <div className="mt-6 text-sm text-gray-600">Listing not found.</div>
       ) : (
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Details & Edit */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="border rounded p-4">
-              <h2 className="text-lg font-semibold mb-3">Details</h2>
-
-              {thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={thumbnailUrl}
-                  alt={listing.title}
-                  className="w-full h-48 object-cover rounded mb-3"
-                />
-              ) : null}
-
-              <div className="text-sm text-gray-600">
-                <div>
-                  <span className="font-medium text-gray-800">Listing ID:</span> {listing.id}
-                </div>
-                {listing.location ? (
-                  <div className="mt-1">
-                    <span className="font-medium text-gray-800">Location:</span>{' '}
-                    {[listing.location.suburb, listing.location.state, listing.location.country]
-                      .filter(Boolean)
-                      .join(', ')}
-                    {typeof listing.location.postcode === 'number'
-                      ? ` ${listing.location.postcode}`
-                      : ''}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="border rounded p-4">
-              <h2 className="text-lg font-semibold mb-3">Edit listing</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Title</label>
-                  <input
-                    name="title"
-                    value={editForm.title}
-                    onChange={handleEditChange}
-                    className="w-full p-2 border rounded"
-                    placeholder="Title"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Description</label>
-                  <textarea
-                    name="description"
-                    value={editForm.description}
-                    onChange={handleEditChange}
-                    className="w-full p-2 border rounded"
-                    rows={4}
-                    placeholder="Describe your item/offer"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Category</label>
-                  <select
-                    name="category"
-                    value={editForm.category}
-                    onChange={handleEditChange}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">Select Category</option>
-                    <option value="share">share</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Exchange Type</label>
-                  <select
-                    name="exchange_type"
-                    value={editForm.exchange_type}
-                    onChange={handleEditChange}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">Select Exchange Type</option>
-                    <option value="swap">swap</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
-                  <select
-                    name="status"
-                    value={editForm.status || 'available'}
-                    onChange={handleEditChange}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="available">available</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <p className="text-sm font-medium mb-2">Location (optional)</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input
-                      name="location.country"
-                      value={editForm.location.country}
-                      onChange={handleEditChange}
-                      className="p-2 border rounded"
-                      placeholder="Country"
-                    />
-                    <input
-                      name="location.state"
-                      value={editForm.location.state}
-                      onChange={handleEditChange}
-                      className="p-2 border rounded"
-                      placeholder="State"
-                    />
-                    <input
-                      name="location.suburb"
-                      value={editForm.location.suburb}
-                      onChange={handleEditChange}
-                      className="p-2 border rounded"
-                      placeholder="Suburb"
-                    />
-                    <input
-                      name="location.postcode"
-                      value={editForm.location.postcode}
-                      onChange={handleEditChange}
-                      className="p-2 border rounded"
-                      placeholder="Postcode"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-6">
-                <button
-                  onClick={() => router.push('/dashboard/listings')}
-                  className="px-4 py-2 rounded border"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveEdits}
-                  disabled={saving}
-                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-60"
-                >
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
+            <ListingSummaryCard listing={listing} thumbnailUrl={thumbnailUrl} />
+            <ListingEditForm
+              editForm={editForm}
+              onChange={handleEditChange}
+              onSave={saveEdits}
+              onDelete={handleDelete}
+              onCancel={() => router.push('/dashboard')}
+              saving={saving}
+              deleting={deleting}
+              statuses={LISTING_STATUSES}
+              exchangeTypes={EXCHANGE_TYPES}
+            />
           </div>
 
-          {/* Right: Interest */}
           <div className="space-y-4">
-            <div className="border rounded p-4">
-              <h2 className="text-lg font-semibold">Interest</h2>
-              <p className="text-sm text-gray-700 mt-1">
-                Interested users: <span className="font-medium">{interestedCount}</span>
-              </p>
+            <InterestedUsersPanel
+              interestedUsers={interestedUsers as InterestedUser[] | null}
+              fallbackInterestedIds={fallbackInterestedIds}
+              loading={interestedUsersLoading}
+              error={interestedUsersError}
+              onStartConversation={handleStartConversation}
+              startingConversationUid={startingConversationUid}
+            />
 
-              {interestedIds.length ? (
-                <div className="mt-3 space-y-2">
-                  {interestedIds.map((uid) => (
-                    <div
-                      key={uid}
-                      className="flex items-center justify-between bg-white border rounded p-2 text-sm"
-                    >
-                      <div className="font-medium">{uid}</div>
-                      <div className="text-xs text-gray-500">interested</div>
-                    </div>
-                  ))}
+            {conversationError ? (
+              <div className="text-sm text-red-600">{conversationError}</div>
+            ) : null}
+
+            {activeConversationId ? (
+              <div className="border rounded overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
+                  <h3 className="text-sm font-medium text-gray-700">Messages</h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveConversationId(null)}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Close
+                  </button>
                 </div>
-              ) : (
-                <div className="mt-3 text-xs text-gray-500">No interest yet.</div>
-              )}
-            </div>
+                <div className="h-80">
+                  <MessageThread conversationId={activeConversationId} />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500 border rounded p-3">
+                Select an interested user to start a conversation.
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -6,6 +6,9 @@ import {
   onAuthStateChanged
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
+import type { ExchangeType, ListingLocation, ListingStatus } from '@/lib/types/listing'
+import { ensureConversation } from '@/lib/api/chat'
+import type { ConversationDoc } from '@/lib/types/chat'
 
 type Listing = {
   id: string
@@ -14,14 +17,9 @@ type Listing = {
   image_urls: string[]
   interested_user_count: number
   category?: string
-  exchange_type?: string
-  location?: {
-    country?: string
-    state?: string
-    suburb?: string
-    postcode?: number
-  }
-  status?: string
+  exchange_type?: ExchangeType
+  location?: Partial<ListingLocation>
+  status?: ListingStatus
   created_at?: string
   has_registered?: boolean
   user_id?: string
@@ -36,6 +34,14 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [successMessage, setSuccessMessage] = useState('')
   const [userToken, setUserToken] = useState<string | null>(null)
   const [currentUid, setCurrentUid] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationError, setConversationError] = useState<string | null>(null)
+  const [openingConversation, setOpeningConversation] = useState(false)
+  const [pendingConversation, setPendingConversation] = useState<ConversationDoc | null>(null)
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [templateMessage, setTemplateMessage] = useState('')
+  const [templateError, setTemplateError] = useState<string | null>(null)
+  const [sendingTemplate, setSendingTemplate] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -108,6 +114,93 @@ export default function ListingDetailClient({ id }: { id: string }) {
     } finally {
       setClaiming(false)
     }
+  }
+
+  const buildTemplateMessage = () => {
+    const title = listing?.title?.trim()
+    const listingSegment = title && title.length ? ` "${title}"` : ''
+    return `Hi there, I came across your listing${listingSegment} and I'd love to arrange a pickup if it's still available. Let me know what time works best for you, or if you have any questions for me first. Thanks so much!`
+  }
+
+  const handleMessageOwnerClick = async () => {
+    if (!userToken) {
+      router.push(`/login?redirect=/listings/${id}`)
+      return
+    }
+
+    setConversationError(null)
+
+    if (conversationId) {
+      router.push(`/messages?conversation=${conversationId}`, { scroll: false })
+      return
+    }
+
+    setOpeningConversation(true)
+
+    try {
+      const conversation = await ensureConversation({ token: userToken, listingId: id })
+      if (conversation.last_message_at || conversation.last_message_preview) {
+        setConversationId(conversation.id)
+        router.push(`/messages?conversation=${conversation.id}`, { scroll: false })
+        return
+      }
+
+      setPendingConversation(conversation)
+      setTemplateMessage(buildTemplateMessage())
+      setTemplateError(null)
+      setShowTemplateModal(true)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to open conversation'
+      setConversationError(message)
+    } finally {
+      setOpeningConversation(false)
+    }
+  }
+
+  const handleSendTemplateMessage = async () => {
+    if (!pendingConversation || !userToken) return
+    const trimmed = templateMessage.trim()
+    if (!trimmed) {
+      setTemplateError('Please enter a message before sending.')
+      return
+    }
+
+    setSendingTemplate(true)
+    setTemplateError(null)
+
+    try {
+      const res = await fetch(`/api/v1/conversations/${pendingConversation.id}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ body: trimmed }),
+      })
+
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'Failed to send message')
+      }
+
+      setShowTemplateModal(false)
+      setPendingConversation(null)
+      setTemplateMessage('')
+      setConversationId(pendingConversation.id)
+      router.push(`/messages?conversation=${pendingConversation.id}`, { scroll: false })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to send message'
+      setTemplateError(message)
+    } finally {
+      setSendingTemplate(false)
+    }
+  }
+
+  const handleCancelTemplate = () => {
+    setShowTemplateModal(false)
+    setPendingConversation(null)
+    setTemplateMessage('')
+    setTemplateError(null)
   }
 
   if (loading) return <div className="flex-grow flex items-center justify-center">Loading...</div>
@@ -196,12 +289,20 @@ export default function ListingDetailClient({ id }: { id: string }) {
             ) : hasRegistered ? (
               <>
                 <button
-                  onClick={() => router.push(`/claims`)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition"
+                  onClick={handleMessageOwnerClick}
+                  disabled={openingConversation}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-60"
                 >
-                  Message Owner
+                  {openingConversation
+                    ? 'Opening chat…'
+                    : conversationId
+                      ? 'Open Messages'
+                      : 'Message Owner'}
                 </button>
                 {successMessage && <p className="text-green-600 text-sm mt-2">{successMessage}</p>}
+                {conversationError && (
+                  <p className="text-red-600 text-sm mt-2">{conversationError}</p>
+                )}
               </>
             ) : (
               <button
@@ -215,6 +316,47 @@ export default function ListingDetailClient({ id }: { id: string }) {
           </aside>
         </div>
       </div>
+      {showTemplateModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl overflow-hidden">
+            <div className="border-b px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-800">Start the conversation</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Send a friendly first message to the listing owner. You can edit it before sending.
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <textarea
+                value={templateMessage}
+                onChange={(event) => {
+                  setTemplateMessage(event.target.value)
+                  setTemplateError(null)
+                }}
+                rows={5}
+                className="w-full border rounded-md p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              {templateError ? <p className="text-sm text-red-600">{templateError}</p> : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 py-3 bg-gray-50">
+              <button
+                type="button"
+                onClick={handleCancelTemplate}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendTemplateMessage}
+                disabled={sendingTemplate}
+                className="px-4 py-2 text-sm font-semibold text-white rounded-md bg-green-600 hover:bg-green-700 disabled:opacity-60"
+              >
+                {sendingTemplate ? 'Sending…' : 'Send message'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

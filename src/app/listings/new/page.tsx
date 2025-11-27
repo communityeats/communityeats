@@ -3,20 +3,29 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
+import {
+  EXCHANGE_TYPES,
+  normalizeListingLocation,
+  thumbnailInImageIds,
+  type ExchangeType,
+} from '@/lib/types/listing'
+import LocationAutocomplete, {
+  type LocationSelection,
+} from '@/components/LocationAutocomplete'
 
-const categories = ['home', 'share', 'coop']
-const exchangeTypes = ['swap', 'gift', 'pay']
+type FormState = {
+  title: string
+  description: string
+  exchange_type: ExchangeType | ''
+  contact_info: string
+  anonymous: boolean
+}
 
 export default function NewListingPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormState>({
     title: '',
     description: '',
-    country: '',
-    state: '',
-    suburb: '',
-    postcode: '',
-    category: '',
     exchange_type: '',
     contact_info: '',
     anonymous: false,
@@ -24,6 +33,9 @@ export default function NewListingPage() {
   const [images, setImages] = useState<File[]>([])
   const [thumbnailId, setThumbnailId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [locationSelection, setLocationSelection] = useState<LocationSelection | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
@@ -53,12 +65,27 @@ export default function NewListingPage() {
     e.preventDefault()
     setError('')
 
-    if (!formData.title || !formData.description || !formData.category || !formData.exchange_type) {
+    if (!formData.title || !formData.description || !formData.exchange_type) {
       setError('Please fill in all required fields.')
       return
     }
 
-    if (!thumbnailId || !images.some(img => img.name === thumbnailId)) {
+    if (!googleMapsApiKey) {
+      setError('Location search requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to be configured.')
+      return
+    }
+
+    if (!locationSelection) {
+      setError('Please choose a location from the search field.')
+      return
+    }
+
+    if (locationError) {
+      setError(locationError)
+      return
+    }
+
+    if (!thumbnailId || !images.some((img) => img.name === thumbnailId)) {
       setError('Thumbnail must match one of the selected images.')
       return
     }
@@ -98,32 +125,43 @@ export default function NewListingPage() {
       })
     }
 
-    const thumbnailEntry = uploaded.find(img => img.originalName === thumbnailId)
+    const thumbnailEntry = uploaded.find((img) => img.originalName === thumbnailId)
     if (!thumbnailEntry) {
       setError('Thumbnail image not found among uploads.')
       return
     }
 
+    if (!thumbnailInImageIds(
+      uploaded.map((img) => img.id),
+      thumbnailEntry.id
+    )) {
+      setError('Thumbnail must be one of the uploaded image IDs.')
+      return
+    }
+
+    const location = normalizeListingLocation({
+      ...locationSelection.location,
+      latitude: locationSelection.location.latitude ?? undefined,
+      longitude: locationSelection.location.longitude ?? undefined,
+    })
+
     const payload = {
       title: formData.title.toLowerCase(),
       description: formData.description.toLowerCase(),
-      country: formData.country.toLowerCase(),
-      state: formData.state.toLowerCase(),
-      suburb: formData.suburb.toLowerCase(),
-      postcode: Number(formData.postcode),
-      category: formData.category,
+      country: location.country,
+      state: location.state,
+      suburb: location.suburb,
+      postcode: location.postcode,
+      category: null,
       exchange_type: formData.exchange_type,
       contact_info: formData.contact_info || null,
       anonymous: formData.anonymous,
-      image_ids: uploaded.map(img => img.id),
-      image_urls: uploaded.map(img => img.url),
+      image_ids: uploaded.map((img) => img.id),
+      image_urls: uploaded.map((img) => img.url),
       thumbnail_id: thumbnailEntry.id,
-      location: {
-        country: formData.country.toLowerCase(),
-        state: formData.state.toLowerCase(),
-        suburb: formData.suburb.toLowerCase(),
-        postcode: Number(formData.postcode),
-      },
+      location,
+      location_place_id: location.place_id ?? null,
+      location_label: location.label ?? null,
       user_id: user.uid,
     }
 
@@ -153,21 +191,32 @@ export default function NewListingPage() {
         <input name="title" placeholder="Title" className="w-full p-2 border rounded" onChange={handleChange} required />
         <textarea name="description" placeholder="Description" className="w-full p-2 border rounded" onChange={handleChange} required />
 
-        <div className="grid grid-cols-2 gap-4">
-          <input name="country" placeholder="Country" className="p-2 border rounded" onChange={handleChange} />
-          <input name="state" placeholder="State" className="p-2 border rounded" onChange={handleChange} />
-          <input name="suburb" placeholder="Suburb" className="p-2 border rounded" onChange={handleChange} />
-          <input name="postcode" placeholder="Postcode" className="p-2 border rounded" onChange={handleChange} />
-        </div>
-
-        <select name="category" className="w-full p-2 border rounded" onChange={handleChange} required>
-          <option value="">Select Category</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <LocationAutocomplete
+          apiKey={googleMapsApiKey}
+          value={locationSelection}
+          onChange={(selection) => {
+            setLocationSelection(selection)
+            setLocationError(null)
+          }}
+          onError={(message) => {
+            setLocationError(message)
+            if (message) setError(message)
+          }}
+          error={locationError}
+          disabled={!googleMapsApiKey}
+          placeholder="Start typing an address"
+        />
+        {!googleMapsApiKey ? (
+          <p className="text-sm text-red-600">
+            Configure `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in your environment to enable location search.
+          </p>
+        ) : null}
 
         <select name="exchange_type" className="w-full p-2 border rounded" onChange={handleChange} required>
           <option value="">Select Exchange Type</option>
-          {exchangeTypes.map(e => <option key={e} value={e}>{e}</option>)}
+          {EXCHANGE_TYPES.map((type) => (
+            <option key={type} value={type}>{type}</option>
+          ))}
         </select>
 
         <input name="contact_info" placeholder="Contact Info (optional)" className="w-full p-2 border rounded" onChange={handleChange} />
