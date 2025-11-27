@@ -15,7 +15,13 @@ const formatDistance = (distanceKm: number) => {
   return `${distanceKm.toFixed(1)} km away`
 }
 
-export default function ListingCard({ listing }: { listing: Listing }) {
+export default function ListingCard({
+  listing,
+  hideImage = false,
+}: {
+  listing: Listing
+  hideImage?: boolean
+}) {
   const distanceLabel =
     typeof listing.distanceKm === 'number' ? formatDistance(listing.distanceKm) : null
 
@@ -24,7 +30,13 @@ export default function ListingCard({ listing }: { listing: Listing }) {
       href={`/listings/${listing.id}`}
       className="block border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
-      <img src={listing.imageURL ?? "/placeholder.png"} alt="" className="h-40 w-full object-cover" />
+      {!hideImage ? (
+        <img
+          src={listing.imageURL ?? '/placeholder.png'}
+          alt=""
+          className="h-40 w-full object-cover"
+        />
+      ) : null}
       <div className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-medium text-gray-900">{listing.title}</h3>
