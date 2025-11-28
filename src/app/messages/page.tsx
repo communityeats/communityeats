@@ -82,6 +82,9 @@ function MessagesPageContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [claimingListing, setClaimingListing] = useState(false)
+  const [claimNotice, setClaimNotice] = useState<string | null>(null)
+  const [claimIsError, setClaimIsError] = useState(false)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -142,6 +145,7 @@ function MessagesPageContent() {
     const paramId = searchParams.get('conversation')
     if (!paramId) return
     setSelectedConversationId((prev) => (prev === paramId ? prev : paramId))
+    setClaimNotice(null)
   }, [searchParams])
 
   const handleSelectConversation = (conversationId: string) => {
@@ -162,6 +166,37 @@ function MessagesPageContent() {
         })
         .join(', ')
     : ''
+
+  const handleConfirmClaim = async () => {
+    if (!selectedConversation || !idToken) return
+    if (selectedConversation.listing_owner_uid !== currentUid) return
+
+    setClaimingListing(true)
+    setClaimNotice(null)
+    setClaimIsError(false)
+
+    try {
+      const res = await fetch('/api/v1/listings/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ id: selectedConversation.listing_id, status: 'claimed' }),
+      })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean }
+      if (!res.ok || payload?.success === false) {
+        throw new Error(payload?.error || `Request failed with ${res.status}`)
+      }
+      setClaimNotice('Marked listing as claimed.')
+      setClaimIsError(false)
+    } catch (err: unknown) {
+      setClaimNotice(err instanceof Error ? err.message : 'Failed to mark listing as claimed')
+      setClaimIsError(true)
+    } finally {
+      setClaimingListing(false)
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -237,13 +272,34 @@ function MessagesPageContent() {
                       Conversation with {selectedConversationNames || 'participant'}
                     </p>
                   </div>
-                  <Link
-                    href={`/listings/${selectedConversation.listing_id}`}
-                    className="text-xs text-indigo-600 hover:text-indigo-700"
-                  >
-                    View listing
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    {selectedConversation.listing_owner_uid === currentUid ? (
+                      <button
+                        type="button"
+                        onClick={handleConfirmClaim}
+                        disabled={claimingListing}
+                        className="px-3 py-1 rounded text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
+                      >
+                        {claimingListing ? 'Marking…' : 'Confirm claimed'}
+                      </button>
+                    ) : null}
+                    <Link
+                      href={`/listings/${selectedConversation.listing_id}`}
+                      className="text-xs text-indigo-600 hover:text-indigo-700"
+                    >
+                      View listing
+                    </Link>
+                  </div>
                 </div>
+                {claimNotice ? (
+                  <div
+                    className={`px-4 py-2 text-xs ${
+                      claimIsError ? 'text-red-600' : 'text-green-700'
+                    }`}
+                  >
+                    {claimNotice}
+                  </div>
+                ) : null}
                 <div className="flex-1">
                   <MessageThread conversationId={selectedConversation.id} />
                 </div>

@@ -39,6 +39,12 @@ export default function Dashboard() {
   const [idToken, setIdToken] = useState<string | null>(null);
   const [messageError, setMessageError] = useState<string | null>(null);
   const [messagingListingId, setMessagingListingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimFeedback, setClaimFeedback] = useState<string | null>(null);
+  const [claimFeedbackIsError, setClaimFeedbackIsError] = useState(false);
+  const [showActiveListings, setShowActiveListings] = useState(true);
+  const [showSubscribedListings, setShowSubscribedListings] = useState(true);
+  const [showClaimedListings, setShowClaimedListings] = useState(true);
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -170,7 +176,8 @@ export default function Dashboard() {
 
       const page = body as InterestedResponse;
       if (!cancelled) {
-        setInterested((prev) => [...(prev ?? []), ...(page.listings ?? [])]);
+        const activeListings = (page.listings ?? []).filter((item) => item.status === 'available');
+        setInterested((prev) => [...(prev ?? []), ...activeListings]);
         setInterestedNextCursor(page.next_cursor ?? null);
         setInterestedError(null);
         setInterestedLoading(false);
@@ -204,6 +211,45 @@ export default function Dashboard() {
     }
   };
 
+  const markListingClaimed = async (listingId: string) => {
+    if (!idToken) {
+      router.push(`/login?redirect=/dashboard`);
+      return;
+    }
+
+    setClaimingId(listingId);
+    setClaimFeedback(null);
+    setClaimFeedbackIsError(false);
+
+    try {
+      const res = await fetch('/api/v1/listings/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ id: listingId, status: 'claimed' }),
+      });
+
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      if (!res.ok || payload?.success === false) {
+        throw new Error(payload?.error || `Request failed with ${res.status}`);
+      }
+
+      setListings((prev) =>
+        prev?.map((l) => (l.id === listingId ? ({ ...l, status: 'claimed' } as ListingDoc) : l)) ??
+        prev
+      );
+      setClaimFeedback('Marked listing as claimed.');
+      setClaimFeedbackIsError(false);
+    } catch (err: unknown) {
+      setClaimFeedback(err instanceof Error ? err.message : 'Failed to mark listing as claimed');
+      setClaimFeedbackIsError(true);
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
   // ---- Render helpers
   // ---- Render helpers (SYNC)
 const renderListingCardOwned = (l: ListingUserResponse) => {
@@ -213,6 +259,7 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
   const interestedCount = Array.isArray(l.interested_users_uids)
     ? l.interested_users_uids.length
     : 0;
+  const isClaimed = l.status === 'claimed';
 
   return (
     <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
@@ -230,6 +277,13 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
         ) : null}
         <div className="flex items-center gap-3 text-xs text-gray-600 pt-1">
           <span>Interested: {interestedCount}</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+              isClaimed ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+            }`}
+          >
+            {isClaimed ? 'Claimed' : 'Available'}
+          </span>
         </div>
       </div>
       <div className="p-3 pt-0 border-t bg-gray-50 flex items-center gap-2">
@@ -239,6 +293,18 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
         <Link href={`/dashboard/listings/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors">
           Manage
         </Link>
+        <button
+          type="button"
+          onClick={() => void markListingClaimed(l.id)}
+          disabled={isClaimed || claimingId === l.id}
+          className={`inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            isClaimed
+              ? 'bg-gray-200 text-gray-600 cursor-not-allowed'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60'
+          }`}
+        >
+          {isClaimed ? 'Claimed' : claimingId === l.id ? 'Marking…' : 'Confirm claimed'}
+        </button>
       </div>
     </li>
   );
@@ -289,6 +355,26 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
   );
 };
 
+const SectionToggle = ({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    className="text-sm text-gray-600 hover:text-gray-800 inline-flex items-center gap-1"
+  >
+    <span>{open ? 'Hide' : 'Show'}</span>
+    <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+    <span className="sr-only">{label}</span>
+  </button>
+);
+
   return (
     <AuthGuard>
       <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0 py-4 px-4">
@@ -305,108 +391,170 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
         </Link>
       </section>
 
-      {/* Your Listings */}
+      {/* Your Active Listings */}
       <section className="px-4 pb-8">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Your listings</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900">Your Active Listings</h3>
+          <SectionToggle
+            label="Toggle active listings"
+            open={showActiveListings}
+            onToggle={() => setShowActiveListings((prev) => !prev)}
+          />
+        </div>
 
-        {loading ? (
-          <div className="text-sm text-gray-600">Loading your listings…</div>
-        ) : error ? (
-          <div className="text-sm text-red-600">{error}</div>
-        ) : listings && listings.length > 0 ? (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {listings.map((l) => renderListingCardOwned(l as ListingUserResponse))}
-          </ul>
-        ) : (
-          <div className="text-sm text-gray-600">You have no listings yet.</div>
-        )}
+        {showActiveListings ? (
+          loading ? (
+            <div className="text-sm text-gray-600">Loading your listings…</div>
+          ) : error ? (
+            <div className="text-sm text-red-600">{error}</div>
+          ) : listings && listings.filter((l) => l.status !== 'claimed').length > 0 ? (
+            <>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {listings
+                  .filter((l) => l.status !== 'claimed')
+                  .map((l) => renderListingCardOwned(l as ListingUserResponse))}
+              </ul>
+              {claimFeedback ? (
+                <div
+                  className={`mt-3 text-sm ${
+                    claimFeedbackIsError ? 'text-red-600' : 'text-green-700'
+                  }`}
+                >
+                  {claimFeedback}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">You have no active listings.</div>
+          )
+        ) : null}
       </section>
 
       {/* Subscribed / Interested Listings */}
       <section className="px-4 pb-12">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Subscribed / Interested</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900">Subscribed Listings</h3>
+          <SectionToggle
+            label="Toggle subscribed listings"
+            open={showSubscribedListings}
+            onToggle={() => setShowSubscribedListings((prev) => !prev)}
+          />
+        </div>
 
-        {interestedLoading && (interested ?? []).length === 0 ? (
-          <div className="text-sm text-gray-600">Loading interested listings…</div>
-        ) : interestedError ? (
-          <div className="text-sm text-red-600">{interestedError}</div>
-        ) : interested && interested.length > 0 ? (
-          <>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {interested.map((l) => renderListingCardSubscribed(l as ListingUserResponse))}
-            </ul>
-            {messageError ? (
-              <div className="mt-3 text-sm text-red-600">{messageError}</div>
-            ) : null}
+        {showSubscribedListings ? (
+          interestedLoading && (interested ?? []).length === 0 ? (
+            <div className="text-sm text-gray-600">Loading interested listings…</div>
+          ) : interestedError ? (
+            <div className="text-sm text-red-600">{interestedError}</div>
+          ) : interested && interested.length > 0 ? (
+            <>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {interested.map((l) => renderListingCardSubscribed(l as ListingUserResponse))}
+              </ul>
+              {messageError ? (
+                <div className="mt-3 text-sm text-red-600">{messageError}</div>
+              ) : null}
 
-            {/* Pagination */}
-            <div className="mt-4">
-              {interestedNextCursor ? (
-                <LoadMoreInterested
-                  onClick={async () => {
-                    try {
-                      // Acquire a fresh token via firebase/auth if present; else use localStorage.
-                      const mod = await import('firebase/auth').catch(() => null);
-                      let token: string | null = null;
-                      if (mod) {
-                        const { getAuth } = mod;
-                        const auth = getAuth();
-                        token = auth.currentUser
-                          ? await auth.currentUser.getIdToken().catch(() => null)
-                          : null;
-                        // Keep UID in sync if available
-                        setUserUid(auth.currentUser?.uid ?? null);
-                      }
-                      if (!token && typeof window !== 'undefined') {
-                        token = localStorage.getItem('idToken') || localStorage.getItem('token');
-                      }
-                      if (!token) {
-                        throw new Error('Missing token');
-                      }
-
-                      // Fire the same endpoint with cursor.
-                      const params = new URLSearchParams();
-                      params.set('limit', '20');
-                      if (interestedNextCursor?.cursor_created_at)
-                        params.set('cursor_created_at', interestedNextCursor.cursor_created_at);
-                      if (interestedNextCursor?.cursor_id)
-                        params.set('cursor_id', interestedNextCursor.cursor_id);
-
-                      const res = await fetch(
-                        `/api/v1/listings/user/interested?${params.toString()}`,
-                        {
-                          headers: { Authorization: `Bearer ${token}` },
-                          cache: 'no-store',
+              {/* Pagination */}
+              <div className="mt-4">
+                {interestedNextCursor ? (
+                  <LoadMoreInterested
+                    onClick={async () => {
+                      try {
+                        // Acquire a fresh token via firebase/auth if present; else use localStorage.
+                        const mod = await import('firebase/auth').catch(() => null);
+                        let token: string | null = null;
+                        if (mod) {
+                          const { getAuth } = mod;
+                          const auth = getAuth();
+                          token = auth.currentUser
+                            ? await auth.currentUser.getIdToken().catch(() => null)
+                            : null;
+                          // Keep UID in sync if available
+                          setUserUid(auth.currentUser?.uid ?? null);
                         }
-                      );
+                        if (!token && typeof window !== 'undefined') {
+                          token = localStorage.getItem('idToken') || localStorage.getItem('token');
+                        }
+                        if (!token) {
+                          throw new Error('Missing token');
+                        }
 
-                      if (!res.ok) {
-                        const body = await res.json().catch(() => ({}));
-                        throw new Error(
-                          (body as { error?: string })?.error || `Request failed with ${res.status}`
+                        // Fire the same endpoint with cursor.
+                        const params = new URLSearchParams();
+                        params.set('limit', '20');
+                        if (interestedNextCursor?.cursor_created_at)
+                          params.set('cursor_created_at', interestedNextCursor.cursor_created_at);
+                        if (interestedNextCursor?.cursor_id)
+                          params.set('cursor_id', interestedNextCursor.cursor_id);
+
+                        const res = await fetch(
+                          `/api/v1/listings/user/interested?${params.toString()}`,
+                          {
+                            headers: { Authorization: `Bearer ${token}` },
+                            cache: 'no-store',
+                          }
                         );
-                      }
+
+                        if (!res.ok) {
+                          const body = await res.json().catch(() => ({}));
+                          throw new Error(
+                            (body as { error?: string })?.error || `Request failed with ${res.status}`
+                          );
+                        }
 
                       const page = (await res.json()) as InterestedResponse;
-                      setInterested((prev) => [...(prev ?? []), ...(page.listings ?? [])]);
+                      const activeListings = (page.listings ?? []).filter(
+                        (item) => item.status === 'available'
+                      );
+                      setInterested((prev) => [...(prev ?? []), ...activeListings]);
                       setInterestedNextCursor(page.next_cursor ?? null);
                       setInterestedError(null);
-                    } catch (err: unknown) {
-                      setInterestedError(
-                        (err as { message?: string })?.message || 'Failed to load more'
-                      );
-                    }
-                  }}
-                  loading={interestedLoading}
-                />
-              ) : null}
+                      } catch (err: unknown) {
+                        setInterestedError(
+                          (err as { message?: string })?.message || 'Failed to load more'
+                        );
+                      }
+                    }}
+                    loading={interestedLoading}
+                  />
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">
+              You haven’t registered interest in any listings yet.
             </div>
-          </>
-        ) : (
-          <div className="text-sm text-gray-600">
-            You haven’t registered interest in any listings yet.
-          </div>
-        )}
+          )
+        ) : null}
+      </section>
+
+      {/* Your Claimed Listings */}
+      <section className="px-4 pb-12">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900">Your Claimed Listings</h3>
+          <SectionToggle
+            label="Toggle claimed listings"
+            open={showClaimedListings}
+            onToggle={() => setShowClaimedListings((prev) => !prev)}
+          />
+        </div>
+
+        {showClaimedListings ? (
+          loading ? (
+            <div className="text-sm text-gray-600">Loading your listings…</div>
+          ) : error ? (
+            <div className="text-sm text-red-600">{error}</div>
+          ) : listings && listings.filter((l) => l.status === 'claimed').length > 0 ? (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {listings
+                .filter((l) => l.status === 'claimed')
+                .map((l) => renderListingCardOwned(l as ListingUserResponse))}
+            </ul>
+          ) : (
+            <div className="text-sm text-gray-600">No claimed listings yet.</div>
+          )
+        ) : null}
       </section>
     </AuthGuard>
   );
