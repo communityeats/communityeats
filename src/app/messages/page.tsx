@@ -50,22 +50,22 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-gray-800 truncate">
             {conversation.listing_title || 'Listing'}
           </h3>
-          <p className="text-xs text-gray-500 truncate">
+          <p className="text-xs text-gray-500 truncate break-words">
             {conversation.last_message_preview
               ? lastAuthorLabel
                 ? `${lastAuthorLabel}: ${conversation.last_message_preview}`
                 : conversation.last_message_preview
               : 'No messages yet'}
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-400 truncate">
             {otherParticipantName ? `With ${otherParticipantName}` : 'Conversation'}
           </p>
         </div>
-        <span className="text-[11px] text-gray-500 whitespace-nowrap">{formattedTime}</span>
+        <span className="text-[11px] text-gray-500 whitespace-nowrap shrink-0">{formattedTime}</span>
       </div>
     </button>
   )
