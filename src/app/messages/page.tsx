@@ -116,15 +116,20 @@ function MessagesPageContent() {
     if (typeof window === 'undefined') return
     const query = window.matchMedia('(max-width: 1023px)')
     const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
-      const matches = 'matches' in event ? event.matches : event.matches
+      const matches = event.matches
       setIsMobile(matches)
       if (!matches) {
         setMobileView('list')
       }
     }
     handleChange(query)
-    query.addEventListener('change', handleChange)
-    return () => query.removeEventListener('change', handleChange)
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', handleChange)
+      return () => query.removeEventListener('change', handleChange)
+    }
+    // Fallback for older browsers/Safari
+    query.addListener(handleChange)
+    return () => query.removeListener(handleChange)
   }, [])
 
   useEffect(() => {
@@ -169,8 +174,8 @@ function MessagesPageContent() {
 
       setLoadingStatuses(true)
       try {
-        const entries = await Promise.all(
-          uniqueIds.map(async (listingId) => {
+        const entries: Array<[string, ListingStatus | null]> = await Promise.all(
+          uniqueIds.map(async (listingId): Promise<[string, ListingStatus | null]> => {
             try {
               const res = await fetch(`/api/v1/listings/${listingId}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -180,21 +185,21 @@ function MessagesPageContent() {
                 return [listingId, 'removed' as ListingStatus]
               }
               const payload = (await res.json().catch(() => ({}))) as { status?: unknown }
-              const status =
-                typeof payload.status === 'string' &&
-                ['available', 'claimed', 'removed'].includes(payload.status)
-                  ? (payload.status as ListingStatus)
-                  : null
+              const isListingStatus = (value: unknown): value is ListingStatus =>
+                value === 'available' || value === 'claimed' || value === 'removed'
+              const status: ListingStatus | null = isListingStatus(payload.status)
+                ? payload.status
+                : null
               return [listingId, status] as const
             } catch {
               return [listingId, null] as const
             }
           })
         )
-        const statusMap = entries.reduce<Record<string, ListingStatus | null>>((acc, [id, status]) => {
-          acc[id] = status
-          return acc
-        }, {})
+        const statusMap: Record<string, ListingStatus | null> = {}
+        for (const [id, status] of entries) {
+          statusMap[id] = status
+        }
         const idSet = new Set(uniqueIds)
         setListingStatusMap((prev) => ({ ...prev, ...statusMap }))
         setConversations((prev) =>

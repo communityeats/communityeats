@@ -297,7 +297,7 @@ export default function Dashboard() {
       cancelledRef.current = true;
       if (unsub) unsub();
     };
-  }, [fetchUserListings]);
+  }, [appendInterested, fetchUserListings]);
 
   useEffect(() => {
     if (!showClaimedListings || claimedListings !== null || !idToken || claimedLoading) return;

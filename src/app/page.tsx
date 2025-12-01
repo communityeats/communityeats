@@ -28,18 +28,18 @@ const steps = [
 
 async function getRecentListings(): Promise<CarouselListing[]> {
   try {
-    const buildBaseUrl = () => {
+    const buildBaseUrl = async () => {
       const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim()
       if (envUrl) return envUrl.replace(/\/$/, '')
 
-      const hdrs = headers()
+      const hdrs = await headers()
       const host = hdrs.get('host')
       if (!host) return ''
       const proto = hdrs.get('x-forwarded-proto') ?? 'https'
       return `${proto}://${host}`
     }
 
-    const baseUrl = buildBaseUrl()
+    const baseUrl = await buildBaseUrl()
     const res = await fetch(
       `${baseUrl}/api/v1/listings?status=available&sort=recent&limit=10`,
       {
