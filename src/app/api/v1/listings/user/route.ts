@@ -3,13 +3,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { initAdmin, getFirestore } from '@/lib/firebase/admin'
 import { getAuth } from 'firebase-admin/auth'
-import {ListingDoc} from '@/lib/types/listing'
+import { ListingDoc, isListingStatus, type ListingStatus } from '@/lib/types/listing'
 import { buildImageUrlFromId } from '@/lib/utils'
 
 initAdmin()
 
 export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url)
+    const statusParam = url.searchParams.get('status')
+    const statusFilter: ListingStatus | null =
+      statusParam && isListingStatus(statusParam) ? statusParam : null
+
     // --- Auth (current user) ---
     const authHeader =
       req.headers.get('authorization') ?? req.headers.get('Authorization')
@@ -35,7 +40,12 @@ export async function GET(req: NextRequest) {
 
     // Owner field assumed to be `user_id` (based on your detail route).
     // If you use a different field (e.g., `owner_uid`), change it here.
-    const snap = await col.where('user_id', '==', uid).get()
+    let query = col.where('user_id', '==', uid)
+    if (statusFilter) {
+      query = query.where('status', '==', statusFilter)
+    }
+
+    const snap = await query.get()
 
     // --- Shape response per listing (mirror your detail route semantics) ---
     const listings = await Promise.all(

@@ -31,9 +31,15 @@ const toNameMap = (value: unknown): Record<string, string | null> => {
 
 type MessageThreadProps = {
   conversationId: string
+  onActivity?: (payload: {
+    conversationId: string
+    lastMessageAt: string | null
+    lastMessagePreview: string
+    lastMessageAuthorUid: string | null
+  }) => void
 }
 
-export default function MessageThread({ conversationId }: MessageThreadProps) {
+export default function MessageThread({ conversationId, onActivity }: MessageThreadProps) {
   const [idToken, setIdToken] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -139,6 +145,15 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
           : []
         setMessages(mapped)
         setParticipantNames(toNameMap(payload.participant_profiles))
+        const latest = mapped[mapped.length - 1]
+        if (latest && onActivity) {
+          onActivity({
+            conversationId,
+            lastMessageAt: latest.created_at,
+            lastMessagePreview: latest.body.slice(0, 200),
+            lastMessageAuthorUid: latest.author_uid || null,
+          })
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load messages')
         setMessages([])
@@ -146,7 +161,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         setLoading(false)
       }
     },
-    [conversationId]
+    [conversationId, onActivity]
   )
 
   useEffect(() => {
@@ -199,6 +214,15 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         })
 
         setMessages(mapped)
+        const latest = mapped[mapped.length - 1]
+        if (latest && onActivity) {
+          onActivity({
+            conversationId,
+            lastMessageAt: latest.created_at,
+            lastMessagePreview: latest.body.slice(0, 200),
+            lastMessageAuthorUid: latest.author_uid || null,
+          })
+        }
         setLoading(false)
       },
       (snapshotError) => {
@@ -234,11 +258,10 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       unsubscribeMessages()
       unsubscribeConversation()
     }
-  }, [allowRealtime, conversationId, idToken])
+  }, [allowRealtime, conversationId, idToken, onActivity])
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!conversationId || !idToken) return
+  const sendMessage = useCallback(async () => {
+    if (!conversationId || !idToken || sending) return
     const trimmed = input.trim()
     if (!trimmed) return
 
@@ -265,6 +288,14 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       if (payload.participant_profiles) {
         setParticipantNames(toNameMap(payload.participant_profiles))
       }
+      if (onActivity) {
+        onActivity({
+          conversationId,
+          lastMessageAt: payload.created_at || null,
+          lastMessagePreview: trimmed.slice(0, 200),
+          lastMessageAuthorUid: payload.author_uid || null,
+        })
+      }
       setInput('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send message'
@@ -272,6 +303,11 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
     } finally {
       setSending(false)
     }
+  }, [allowRealtime, conversationId, fetchMessages, idToken, input, onActivity, sending])
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void sendMessage()
   }
 
   if (!conversationId) {
@@ -296,12 +332,12 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
                 ? 'You'
                 : participantNames[m.author_uid] ?? m.author_uid
             return (
-              <div key={m.id} className="bg-white border rounded p-2">
+              <div key={m.id} className="bg-white border rounded p-2 break-words">
                 <div className="text-xs text-gray-500 mb-1">
                   <span className="font-medium">{authorLabel}</span>{' '}
                   <span>{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
                 </div>
-                <p className="text-sm text-gray-800 whitespace-pre-line">{m.body}</p>
+                <p className="text-sm text-gray-800 whitespace-pre-line break-words">{m.body}</p>
               </div>
             )
           })
@@ -314,6 +350,12 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         <textarea
         value={input}
         onChange={(event) => setInput(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            void sendMessage()
+          }
+        }}
         className="w-full border rounded p-2 text-sm"
         rows={3}
         placeholder="Say something nice!"

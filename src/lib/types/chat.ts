@@ -1,3 +1,5 @@
+import type { ListingStatus } from './listing'
+
 export interface ConversationDoc {
   id: string
   listing_id: string
@@ -11,6 +13,7 @@ export interface ConversationDoc {
   last_message_preview: string | null
   last_message_at: string | null
   last_message_author_uid: string | null
+  listing_status?: ListingStatus | null
 }
 
 export interface MessageDoc {

@@ -37,8 +37,14 @@ export async function ensureConversation({
   return (await res.json()) as ConversationDoc
 }
 
-export async function listConversations(token: string) {
-  const res = await fetch('/api/v1/conversations', {
+export async function listConversations(token: string, limit?: number) {
+  const params = new URLSearchParams()
+  if (typeof limit === 'number' && Number.isFinite(limit)) {
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 50)
+    params.set('limit', String(safeLimit))
+  }
+
+  const res = await fetch(`/api/v1/conversations${params.toString() ? `?${params.toString()}` : ''}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
