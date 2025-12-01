@@ -1,5 +1,9 @@
+import { headers } from 'next/headers'
 import Link from 'next/link'
 import ListingCarousel, { type CarouselListing } from '@/components/ListingCarousel'
+
+// Keep the home page dynamic so the carousel shows fresh listings.
+export const revalidate = 0
 
 const featurePoints = [
   {
@@ -24,8 +28,20 @@ const steps = [
 
 async function getRecentListings(): Promise<CarouselListing[]> {
   try {
+    const buildBaseUrl = () => {
+      const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim()
+      if (envUrl) return envUrl.replace(/\/$/, '')
+
+      const hdrs = headers()
+      const host = hdrs.get('host')
+      if (!host) return ''
+      const proto = hdrs.get('x-forwarded-proto') ?? 'https'
+      return `${proto}://${host}`
+    }
+
+    const baseUrl = buildBaseUrl()
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/v1/listings?status=available&sort=recent&limit=6`,
+      `${baseUrl}/api/v1/listings?status=available&sort=recent&limit=10`,
       {
         cache: 'no-store',
       }

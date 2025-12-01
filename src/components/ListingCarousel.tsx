@@ -31,13 +31,15 @@ export default function ListingCarousel({ listings }: ListingCarouselProps) {
     [listings]
   )
   const [index, setIndex] = useState(0)
+  const [renderedIndex, setRenderedIndex] = useState(0)
+  const [transitionPhase, setTransitionPhase] = useState<'idle' | 'fade-out' | 'fade-in'>('idle')
   const count = items.length
 
   useEffect(() => {
     if (!count) return
     const timer = window.setInterval(() => {
       setIndex((prev) => (prev + 1) % count)
-    }, 5000)
+    }, 2500) // faster auto-advance
     return () => window.clearInterval(timer)
   }, [count])
 
@@ -45,7 +47,26 @@ export default function ListingCarousel({ listings }: ListingCarouselProps) {
     if (index >= count && count > 0) {
       setIndex(0)
     }
-  }, [count, index])
+    if (renderedIndex >= count && count > 0) {
+      setRenderedIndex(0)
+    }
+  }, [count, index, renderedIndex])
+
+  useEffect(() => {
+    if (index === renderedIndex) return
+    setTransitionPhase('fade-out')
+    const fadeOut = window.setTimeout(() => {
+      setRenderedIndex(index)
+      setTransitionPhase('fade-in')
+    }, 120)
+    const settle = window.setTimeout(() => {
+      setTransitionPhase('idle')
+    }, 380)
+    return () => {
+      window.clearTimeout(fadeOut)
+      window.clearTimeout(settle)
+    }
+  }, [index, renderedIndex])
 
   if (!count) {
     return (
@@ -55,13 +76,21 @@ export default function ListingCarousel({ listings }: ListingCarouselProps) {
     )
   }
 
-  const current = items[index]
+  const current = items[renderedIndex]
   const heroImage = current.thumbnail_url
-  const fallback = fallbackImages[index % fallbackImages.length]
+  const fallback = fallbackImages[renderedIndex % fallbackImages.length]
+  const slideMotion =
+    transitionPhase === 'fade-out'
+      ? 'opacity-0 translate-y-1'
+      : transitionPhase === 'fade-in'
+        ? 'opacity-100 translate-y-0'
+        : 'opacity-100 translate-y-0'
 
   return (
     <div className="relative overflow-hidden border rounded-2xl bg-white shadow-sm">
-      <div className="grid lg:grid-cols-2 gap-0">
+      <div
+        className={`grid lg:grid-cols-2 gap-0 transition-all duration-500 ease-out ${slideMotion}`}
+      >
         <div className="relative w-full bg-gray-100 overflow-hidden aspect-[16/10] lg:aspect-[4/3] lg:min-h-[260px]">
           {heroImage ? (
             <img
