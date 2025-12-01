@@ -106,6 +106,23 @@ function MessagesPageContent() {
     active: 5,
     archived: 5,
   })
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileView, setMobileView] = useState<'list' | 'thread'>('list')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const query = window.matchMedia('(max-width: 1023px)')
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      const matches = 'matches' in event ? event.matches : event.matches
+      setIsMobile(matches)
+      if (!matches) {
+        setMobileView('list')
+      }
+    }
+    handleChange(query)
+    query.addEventListener('change', handleChange)
+    return () => query.removeEventListener('change', handleChange)
+  }, [])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -282,6 +299,9 @@ function MessagesPageContent() {
     const params = new URLSearchParams(searchParams)
     params.set('conversation', conversationId)
     router.push(`/messages?${params.toString()}`, { scroll: false })
+    if (isMobile) {
+      setMobileView('thread')
+    }
   }
 
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) ?? null
@@ -442,145 +462,164 @@ function MessagesPageContent() {
       ) : !idToken ? (
         <div className="text-sm text-gray-600">Sign in to view your messages.</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <aside className="lg:col-span-1 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700">Conversations</h2>
-              {error ? (
-                <span className="text-xs text-red-600">{error}</span>
-              ) : loadingStatuses ? (
-                <span className="text-xs text-gray-500">Updating statuses…</span>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab('active')}
-                className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
-                  activeTab === 'active'
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-                }`}
-              >
-                Active
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('archived')}
-                className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
-                  activeTab === 'archived'
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-                }`}
-              >
-                Archived
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="text-sm text-gray-600">Loading conversations…</div>
-            ) : displayedConversations.length ? (
-              <div className="space-y-2">
-                {displayedConversations.map((conversation) => (
-                  <ConversationListItem
-                    key={conversation.id}
-                    conversation={conversation}
-                    isActive={conversation.id === selectedConversationId}
-                    onSelect={handleSelectConversation}
-                    currentUid={currentUid}
-                  />
-                ))}
-                {activeTab === 'active' && activeConversations.length > visibleCounts.active ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisibleCounts((prev) => ({
-                        ...prev,
-                        active: prev.active + 5,
-                      }))
-                    }
-                    className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
-                  >
-                    Load 5 more
-                  </button>
-                ) : null}
-                {activeTab === 'archived' && archivedConversations.length > visibleCounts.archived ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisibleCounts((prev) => ({
-                        ...prev,
-                        archived: prev.archived + 5,
-                      }))
-                    }
-                    className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
-                  >
-                    Load 5 more
-                  </button>
+        <div
+          className={isMobile ? 'space-y-4' : 'grid grid-cols-1 lg:grid-cols-3 gap-6'}
+        >
+          {(!isMobile || mobileView === 'list' || !selectedConversation) ? (
+            <aside className={isMobile ? 'space-y-3' : 'lg:col-span-1 space-y-3'}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-700">Conversations</h2>
+                {error ? (
+                  <span className="text-xs text-red-600">{error}</span>
+                ) : loadingStatuses ? (
+                  <span className="text-xs text-gray-500">Updating statuses…</span>
                 ) : null}
               </div>
-            ) : (
-              <div className="text-sm text-gray-600 border rounded p-3">
-                {activeTab === 'active'
-                  ? 'No active conversations.'
-                  : 'No archived conversations.'}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('active')}
+                  className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
+                    activeTab === 'active'
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                  }`}
+                >
+                  Active
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('archived')}
+                  className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
+                    activeTab === 'archived'
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                  }`}
+                >
+                  Archived
+                </button>
               </div>
-            )}
-          </aside>
 
-          <section className="lg:col-span-2 border rounded h-[500px] flex flex-col">
-            {selectedConversation ? (
-              <>
-                <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
-                  <div>
-                    <h2 className="text-sm font-semibold text-gray-700">
-                      {selectedConversation.listing_title || 'Listing'}
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Conversation with {selectedConversationNames || 'participant'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selectedConversation.listing_owner_uid === currentUid ? (
-                      <button
-                        type="button"
-                        onClick={handleConfirmClaim}
-                        disabled={claimingListing}
-                        className="px-3 py-1 rounded text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
-                      >
-                        {claimingListing ? 'Marking…' : 'Confirm claimed'}
-                      </button>
-                    ) : null}
-                    <Link
-                      href={`/listings/${selectedConversation.listing_id}`}
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
+              {loading ? (
+                <div className="text-sm text-gray-600">Loading conversations…</div>
+              ) : displayedConversations.length ? (
+                <div className="space-y-2">
+                  {displayedConversations.map((conversation) => (
+                    <ConversationListItem
+                      key={conversation.id}
+                      conversation={conversation}
+                      isActive={conversation.id === selectedConversationId}
+                      onSelect={handleSelectConversation}
+                      currentUid={currentUid}
+                    />
+                  ))}
+                  {activeTab === 'active' && activeConversations.length > visibleCounts.active ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCounts((prev) => ({
+                          ...prev,
+                          active: prev.active + 5,
+                        }))
+                      }
+                      className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
                     >
-                      View listing
-                    </Link>
-                  </div>
+                      Load 5 more
+                    </button>
+                  ) : null}
+                  {activeTab === 'archived' && archivedConversations.length > visibleCounts.archived ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCounts((prev) => ({
+                          ...prev,
+                          archived: prev.archived + 5,
+                        }))
+                      }
+                      className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
+                    >
+                      Load 5 more
+                    </button>
+                  ) : null}
                 </div>
-                {claimNotice ? (
-                  <div
-                    className={`px-4 py-2 text-xs ${
-                      claimIsError ? 'text-red-600' : 'text-green-700'
-                    }`}
-                  >
-                    {claimNotice}
-                  </div>
-                ) : null}
-                <div className="flex-1">
-                  <MessageThread
-                    conversationId={selectedConversation.id}
-                    onActivity={handleConversationActivity}
-                  />
+              ) : (
+                <div className="text-sm text-gray-600 border rounded p-3">
+                  {activeTab === 'active'
+                    ? 'No active conversations.'
+                    : 'No archived conversations.'}
                 </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
-                Select a conversation to view messages.
-              </div>
-            )}
-          </section>
+              )}
+            </aside>
+          ) : null}
+
+          {(!isMobile || mobileView === 'thread') ? (
+            <section
+              className={`border rounded h-[500px] flex flex-col ${isMobile ? '' : 'lg:col-span-2'}`}
+            >
+              {selectedConversation ? (
+                <>
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+                    <div className="flex items-center gap-3">
+                      {isMobile ? (
+                        <button
+                          type="button"
+                          onClick={() => setMobileView('list')}
+                          className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                        >
+                          ← Back
+                        </button>
+                      ) : null}
+                      <div>
+                        <h2 className="text-sm font-semibold text-gray-700">
+                          {selectedConversation.listing_title || 'Listing'}
+                        </h2>
+                        <p className="text-xs text-gray-500">
+                          Conversation with {selectedConversationNames || 'participant'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedConversation.listing_owner_uid === currentUid ? (
+                        <button
+                          type="button"
+                          onClick={handleConfirmClaim}
+                          disabled={claimingListing}
+                          className="px-3 py-1 rounded text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
+                        >
+                          {claimingListing ? 'Marking…' : 'Confirm claimed'}
+                        </button>
+                      ) : null}
+                      <Link
+                        href={`/listings/${selectedConversation.listing_id}`}
+                        className="text-xs text-indigo-600 hover:text-indigo-700"
+                      >
+                        View listing
+                      </Link>
+                    </div>
+                  </div>
+                  {claimNotice ? (
+                    <div
+                      className={`px-4 py-2 text-xs ${
+                        claimIsError ? 'text-red-600' : 'text-green-700'
+                      }`}
+                    >
+                      {claimNotice}
+                    </div>
+                  ) : null}
+                  <div className="flex-1">
+                    <MessageThread
+                      conversationId={selectedConversation.id}
+                      onActivity={handleConversationActivity}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
+                  {isMobile ? 'Select a conversation to view messages.' : 'Select a conversation to view messages.'}
+                </div>
+              )}
+            </section>
+          ) : null}
         </div>
       )}
     </div>

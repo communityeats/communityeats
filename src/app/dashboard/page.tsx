@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import { ensureConversation } from '@/lib/api/chat';
 import type { ListingDoc } from '@/lib/types/listing';
@@ -22,10 +22,17 @@ type InterestedResponse = {
 };
 
 export default function Dashboard() {
+  const ITEMS_PER_PAGE = 6;
   const router = useRouter();
-  const [listings, setListings] = useState<ListingDoc[] | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeListings, setActiveListings] = useState<ListingDoc[] | null>(null);
+  const [activeLoading, setActiveLoading] = useState<boolean>(true);
+  const [activeError, setActiveError] = useState<string | null>(null);
+  const [activeVisibleCount, setActiveVisibleCount] = useState<number>(ITEMS_PER_PAGE);
+
+  const [claimedListings, setClaimedListings] = useState<ListingDoc[] | null>(null);
+  const [claimedLoading, setClaimedLoading] = useState<boolean>(false);
+  const [claimedError, setClaimedError] = useState<string | null>(null);
+  const [claimedVisibleCount, setClaimedVisibleCount] = useState<number>(ITEMS_PER_PAGE);
 
   // ---- Interested state
   const [interested, setInterested] = useState<ListingDoc[] | null>(null);
@@ -44,92 +51,24 @@ export default function Dashboard() {
   const [claimFeedbackIsError, setClaimFeedbackIsError] = useState(false);
   const [showActiveListings, setShowActiveListings] = useState(true);
   const [showSubscribedListings, setShowSubscribedListings] = useState(true);
-  const [showClaimedListings, setShowClaimedListings] = useState(true);
+  const [showClaimedListings, setShowClaimedListings] = useState(false);
+  const cancelledRef = useRef(false);
 
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        const mod = await import('firebase/auth').catch(() => null);
-        if (!mod) {
-          const idToken =
-            typeof window !== 'undefined'
-              ? localStorage.getItem('idToken') || localStorage.getItem('token')
-              : null;
-          if (!idToken) {
-            if (!cancelled) {
-              setLoading(false);
-              setError('Missing token');
-              setListings([]);
-              setInterestedLoading(false);
-              setInterestedError('Missing token');
-              setInterested([]);
-            }
-            return;
-          }
-          setIdToken(idToken);
-          await Promise.all([fetchUserListings(idToken), fetchInterested(idToken)]);
-          return;
-        }
-
-        const { getAuth, onAuthStateChanged } = mod;
-        const auth = getAuth();
-
-          unsub = onAuthStateChanged(auth, async (user) => {
-            if (cancelled) return;
-            if (!user) {
-              setUserUid(null);
-              setIdToken(null);
-              setLoading(false);
-              setError('Not authenticated');
-              setListings([]);
-              setInterestedLoading(false);
-              setInterestedError('Not authenticated');
-            setInterested([]);
-            return;
-          }
-          try {
-            const idToken = await user.getIdToken();
-            setUserUid(user.uid);
-            setIdToken(idToken);
-            await Promise.all([fetchUserListings(idToken), fetchInterested(idToken)]);
-          } catch {
-            try {
-              const fresh = await user.getIdToken(true);
-              setUserUid(user.uid);
-              setIdToken(fresh);
-              await Promise.all([fetchUserListings(fresh), fetchInterested(fresh)]);
-            } catch (err) {
-              if (!cancelled) {
-                const msg = (err as { message?: string })?.message || 'Failed to initialize';
-                setLoading(false);
-                setError(msg);
-                setListings([]);
-                setInterestedLoading(false);
-                setInterestedError(msg);
-                setInterested([]);
-              }
-            }
-          }
-        });
-      } catch (err: unknown) {
-        if (!cancelled) {
-          const message = (err as { message?: string })?.message || 'Initialization error';
-          setLoading(false);
-          setError(message);
-          setListings([]);
-          setInterestedLoading(false);
-          setInterestedError(message);
-          setInterested([]);
-        }
+  const fetchUserListings = useCallback(
+    async (token: string, status: 'available' | 'claimed') => {
+      if (status === 'available') {
+        setActiveLoading(true);
+        setActiveError(null);
+      } else {
+        setClaimedLoading(true);
+        setClaimedError(null);
       }
-    };
 
-    // ---- Helpers
-    const fetchUserListings = async (token: string) => {
-      const res = await fetch('/api/v1/listings/user', {
+    const params = new URLSearchParams();
+    params.set('status', status);
+
+    try {
+      const res = await fetch(`/api/v1/listings/user?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       });
@@ -141,13 +80,135 @@ export default function Dashboard() {
       }
 
       const data = await res.json();
-      if (!cancelled) {
-        setListings(Array.isArray(data?.listings) ? (data.listings as ListingDoc[]) : []);
-        setError(null);
-        setLoading(false);
+      if (!cancelledRef.current) {
+        const items = Array.isArray(data?.listings) ? (data.listings as ListingDoc[]) : [];
+        if (status === 'available') {
+          setActiveListings(items);
+          setActiveVisibleCount(ITEMS_PER_PAGE);
+          setActiveError(null);
+          setActiveLoading(false);
+        } else {
+          setClaimedListings(items);
+          setClaimedVisibleCount(ITEMS_PER_PAGE);
+          setClaimedError(null);
+          setClaimedLoading(false);
+        }
+      }
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message || 'Failed to load listings';
+      if (!cancelledRef.current) {
+        if (status === 'available') {
+          setActiveError(message);
+          setActiveListings([]);
+          setActiveLoading(false);
+        } else {
+          setClaimedError(message);
+          setClaimedListings([]);
+          setClaimedLoading(false);
+        }
+      }
+    }
+  },
+  []
+);
+
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    cancelledRef.current = false;
+
+    const init = async () => {
+      try {
+        const mod = await import('firebase/auth').catch(() => null);
+        if (!mod) {
+          const idToken =
+            typeof window !== 'undefined'
+              ? localStorage.getItem('idToken') || localStorage.getItem('token')
+              : null;
+          if (!idToken) {
+            if (!cancelledRef.current) {
+              setActiveLoading(false);
+              setActiveError('Missing token');
+              setActiveListings([]);
+              setClaimedLoading(false);
+              setClaimedError('Missing token');
+              setClaimedListings([]);
+              setInterestedLoading(false);
+              setInterestedError('Missing token');
+              setInterested([]);
+            }
+            return;
+          }
+          setIdToken(idToken);
+          await Promise.all([fetchUserListings(idToken, 'available'), fetchInterested(idToken)]);
+          return;
+        }
+
+        const { getAuth, onAuthStateChanged } = mod;
+        const auth = getAuth();
+
+          unsub = onAuthStateChanged(auth, async (user) => {
+            if (cancelledRef.current) return;
+            if (!user) {
+              setUserUid(null);
+              setIdToken(null);
+              setActiveLoading(false);
+              setActiveError('Not authenticated');
+              setActiveListings([]);
+              setClaimedLoading(false);
+              setClaimedError('Not authenticated');
+              setClaimedListings([]);
+              setInterestedLoading(false);
+              setInterestedError('Not authenticated');
+              setInterested([]);
+              return;
+            }
+            try {
+              const idToken = await user.getIdToken();
+              setUserUid(user.uid);
+              setIdToken(idToken);
+              await Promise.all([fetchUserListings(idToken, 'available'), fetchInterested(idToken)]);
+            } catch {
+              try {
+                const fresh = await user.getIdToken(true);
+                setUserUid(user.uid);
+                setIdToken(fresh);
+                await Promise.all([
+                  fetchUserListings(fresh, 'available'),
+                  fetchInterested(fresh),
+                ]);
+              } catch (err) {
+                if (!cancelledRef.current) {
+                  const msg = (err as { message?: string })?.message || 'Failed to initialize';
+                  setActiveLoading(false);
+                  setActiveError(msg);
+                  setActiveListings([]);
+                  setClaimedLoading(false);
+                  setClaimedError(msg);
+                  setClaimedListings([]);
+                  setInterestedLoading(false);
+                  setInterestedError(msg);
+                  setInterested([]);
+                }
+              }
+            }
+          });
+      } catch (err: unknown) {
+        if (!cancelledRef.current) {
+          const message = (err as { message?: string })?.message || 'Initialization error';
+          setActiveLoading(false);
+          setActiveError(message);
+          setActiveListings([]);
+          setClaimedLoading(false);
+          setClaimedError(message);
+          setClaimedListings([]);
+          setInterestedLoading(false);
+          setInterestedError(message);
+          setInterested([]);
+        }
       }
     };
 
+    // ---- Helpers
     const fetchInterested = async (
       token: string,
       cursor?: InterestedResponse['next_cursor']
@@ -155,7 +216,7 @@ export default function Dashboard() {
       setInterestedLoading(true);
 
       const params = new URLSearchParams();
-      params.set('limit', '20');
+      params.set('limit', ITEMS_PER_PAGE.toString());
       if (cursor?.cursor_created_at) params.set('cursor_created_at', cursor.cursor_created_at);
       if (cursor?.cursor_id) params.set('cursor_id', cursor.cursor_id);
 
@@ -175,7 +236,7 @@ export default function Dashboard() {
       }
 
       const page = body as InterestedResponse;
-      if (!cancelled) {
+      if (!cancelledRef.current) {
         const activeListings = (page.listings ?? []).filter((item) => item.status === 'available');
         setInterested((prev) => [...(prev ?? []), ...activeListings]);
         setInterestedNextCursor(page.next_cursor ?? null);
@@ -187,10 +248,15 @@ export default function Dashboard() {
     void init();
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       if (unsub) unsub();
     };
-  }, []);
+  }, [fetchUserListings]);
+
+  useEffect(() => {
+    if (!showClaimedListings || claimedListings !== null || !idToken || claimedLoading) return;
+    void fetchUserListings(idToken, 'claimed');
+  }, [claimedListings, claimedLoading, fetchUserListings, idToken, showClaimedListings]);
 
   const startConversationForListing = async (listingId: string) => {
     if (!idToken) {
@@ -236,10 +302,27 @@ export default function Dashboard() {
         throw new Error(payload?.error || `Request failed with ${res.status}`);
       }
 
-      setListings((prev) =>
-        prev?.map((l) => (l.id === listingId ? ({ ...l, status: 'claimed' } as ListingDoc) : l)) ??
-        prev
+      const movedListing =
+        activeListings?.find((l) => l.id === listingId) ??
+        claimedListings?.find((l) => l.id === listingId) ??
+        null;
+
+      setActiveListings((prev) =>
+        prev?.filter((l) => l.id !== listingId) ?? prev
       );
+      setClaimedListings((prev) => {
+        const base = prev ?? [];
+        const existingIndex = base.findIndex((l) => l.id === listingId);
+        const updated = movedListing ? ({ ...movedListing, status: 'claimed' } as ListingDoc) : null;
+        if (!updated) return base;
+        if (existingIndex >= 0) {
+          const next = [...base];
+          next[existingIndex] = updated;
+          return next;
+        }
+        return [updated, ...base];
+      });
+      setClaimedVisibleCount((prev) => Math.max(prev, ITEMS_PER_PAGE));
       setClaimFeedback('Marked listing as claimed.');
       setClaimFeedbackIsError(false);
     } catch (err: unknown) {
@@ -403,17 +486,28 @@ const SectionToggle = ({
         </div>
 
         {showActiveListings ? (
-          loading ? (
+          activeLoading ? (
             <div className="text-sm text-gray-600">Loading your listings…</div>
-          ) : error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : listings && listings.filter((l) => l.status !== 'claimed').length > 0 ? (
+          ) : activeError ? (
+            <div className="text-sm text-red-600">{activeError}</div>
+          ) : activeListings && activeListings.length > 0 ? (
             <>
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {listings
-                  .filter((l) => l.status !== 'claimed')
+                {activeListings
+                  .slice(0, activeVisibleCount)
                   .map((l) => renderListingCardOwned(l as ListingUserResponse))}
               </ul>
+              {activeListings.length > activeVisibleCount ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveVisibleCount((prev) => prev + ITEMS_PER_PAGE)}
+                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Load {ITEMS_PER_PAGE} more
+                  </button>
+                </div>
+              ) : null}
               {claimFeedback ? (
                 <div
                   className={`mt-3 text-sm ${
@@ -459,8 +553,10 @@ const SectionToggle = ({
               <div className="mt-4">
                 {interestedNextCursor ? (
                   <LoadMoreInterested
+                    pageSize={ITEMS_PER_PAGE}
                     onClick={async () => {
                       try {
+                        setInterestedLoading(true);
                         // Acquire a fresh token via firebase/auth if present; else use localStorage.
                         const mod = await import('firebase/auth').catch(() => null);
                         let token: string | null = null;
@@ -482,7 +578,7 @@ const SectionToggle = ({
 
                         // Fire the same endpoint with cursor.
                         const params = new URLSearchParams();
-                        params.set('limit', '20');
+                        params.set('limit', ITEMS_PER_PAGE.toString());
                         if (interestedNextCursor?.cursor_created_at)
                           params.set('cursor_created_at', interestedNextCursor.cursor_created_at);
                         if (interestedNextCursor?.cursor_id)
@@ -514,6 +610,8 @@ const SectionToggle = ({
                         setInterestedError(
                           (err as { message?: string })?.message || 'Failed to load more'
                         );
+                      } finally {
+                        setInterestedLoading(false);
                       }
                     }}
                     loading={interestedLoading}
@@ -536,21 +634,48 @@ const SectionToggle = ({
           <SectionToggle
             label="Toggle claimed listings"
             open={showClaimedListings}
-            onToggle={() => setShowClaimedListings((prev) => !prev)}
+            onToggle={() =>
+              setShowClaimedListings((prev) => {
+                const next = !prev;
+                if (next && !claimedLoading && (claimedListings === null || claimedError)) {
+                  if (!idToken) {
+                    setClaimedError('Missing token');
+                    setClaimedListings(null);
+                    setClaimedLoading(false);
+                  } else {
+                    void fetchUserListings(idToken, 'claimed');
+                  }
+                }
+                return next;
+              })
+            }
           />
         </div>
 
         {showClaimedListings ? (
-          loading ? (
+          claimedLoading ? (
             <div className="text-sm text-gray-600">Loading your listings…</div>
-          ) : error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : listings && listings.filter((l) => l.status === 'claimed').length > 0 ? (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {listings
-                .filter((l) => l.status === 'claimed')
-                .map((l) => renderListingCardOwned(l as ListingUserResponse))}
-            </ul>
+          ) : claimedError ? (
+            <div className="text-sm text-red-600">{claimedError}</div>
+          ) : claimedListings && claimedListings.length > 0 ? (
+            <>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {claimedListings
+                  .slice(0, claimedVisibleCount)
+                  .map((l) => renderListingCardOwned(l as ListingUserResponse))}
+              </ul>
+              {claimedListings.length > claimedVisibleCount ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setClaimedVisibleCount((prev) => prev + ITEMS_PER_PAGE)}
+                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Load {ITEMS_PER_PAGE} more
+                  </button>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="text-sm text-gray-600">No claimed listings yet.</div>
           )
@@ -564,9 +689,11 @@ const SectionToggle = ({
 function LoadMoreInterested({
   onClick,
   loading,
+  pageSize = 6,
 }: {
   onClick: () => void | Promise<void>;
   loading?: boolean;
+  pageSize?: number;
 }) {
   return (
     <button
@@ -574,7 +701,7 @@ function LoadMoreInterested({
       disabled={!!loading}
       className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors disabled:opacity-60"
     >
-      {loading ? 'Loading…' : 'Load more'}
+      {loading ? 'Loading…' : `Load ${pageSize} more`}
     </button>
   );
 }
