@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { headers } from 'next/headers'
 import ListingCarousel, { type CarouselListing } from '@/components/ListingCarousel'
 
 const featurePoints = [
@@ -25,21 +24,12 @@ const steps = [
 
 async function getRecentListings(): Promise<CarouselListing[]> {
   try {
-    const hdrs = headers()
-    const envBase =
-      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-      process.env.SITE_URL?.replace(/\/$/, '') ||
-      process.env.VERCEL_URL?.replace(/\/$/, '')
-    const host = hdrs.get('x-forwarded-host') ?? hdrs.get('host')
-    const proto = hdrs.get('x-forwarded-proto') ?? 'https'
-    const derivedBase = host ? `${proto}://${host}` : ''
-    const baseUrl = envBase?.startsWith('http') ? envBase : envBase ? `https://${envBase}` : derivedBase
-    const url =
-      (baseUrl ? `${baseUrl}` : '') + `/api/v1/listings?status=available&sort=recent&limit=6`
-
-    const res = await fetch(url, {
-      cache: 'no-store',
-    })
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/v1/listings?status=available&sort=recent&limit=6`,
+      {
+        cache: 'no-store',
+      }
+    )
     if (!res.ok) return []
     const data = await res.json()
     if (!Array.isArray(data)) return []

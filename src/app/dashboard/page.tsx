@@ -343,6 +343,8 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
     ? l.interested_users_uids.length
     : 0;
   const isClaimed = l.status === 'claimed';
+  const confirmLabel =
+    isClaimed ? 'Claimed' : claimingId === l.id ? 'Marking…' : 'Confirm claimed';
 
   return (
     <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
@@ -369,24 +371,39 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
           </span>
         </div>
       </div>
-      <div className="p-3 pt-0 border-t bg-gray-50 flex items-center gap-2">
-        <Link href={`/listings/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors">
-          View
+      <div className="p-3 pt-0 border-t bg-gray-50 flex flex-col sm:flex-row sm:flex-wrap gap-2">
+        <Link
+          href={`/listings/${l.id}`}
+          aria-label="View listing"
+          title="View listing"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors text-center"
+        >
+          <EyeIcon aria-hidden={true} />
+          <span>View</span>
         </Link>
-        <Link href={`/dashboard/listings/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors">
-          Manage
+        <Link
+          href={`/dashboard/listings/${l.id}`}
+          aria-label="Manage listing"
+          title="Manage listing"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors text-center"
+        >
+          <SettingsIcon aria-hidden={true} />
+          <span>Manage</span>
         </Link>
         <button
           type="button"
           onClick={() => void markListingClaimed(l.id)}
           disabled={isClaimed || claimingId === l.id}
-          className={`inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+          aria-label={confirmLabel}
+          title={confirmLabel}
+          className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-center ${
             isClaimed
               ? 'bg-gray-200 text-gray-600 cursor-not-allowed'
               : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60'
           }`}
         >
-          {isClaimed ? 'Claimed' : claimingId === l.id ? 'Marking…' : 'Confirm claimed'}
+          <CheckIcon aria-hidden={true} />
+          <span>{confirmLabel}</span>
         </button>
       </div>
     </li>
@@ -402,6 +419,7 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
     ? l.interested_users_uids.includes(userUid)
     : false;
   const othersInterested = Math.max(0, rawCount - (hasSelf ? 1 : 0));
+  const messageLabel = messagingListingId === l.id ? 'Opening…' : 'Message Owner';
 
   return (
     <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
@@ -421,17 +439,26 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
           <span>Others Interested: {othersInterested}</span>
         </div>
       </div>
-      <div className="p-3 pt-0 border-t bg-gray-50 flex items-center gap-2">
-        <Link href={`/listings/${l.id}`} className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors">
-          View
+      <div className="p-3 pt-0 border-t bg-gray-50 flex flex-col sm:flex-row sm:flex-wrap gap-2">
+        <Link
+          href={`/listings/${l.id}`}
+          aria-label="View listing"
+          title="View listing"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors text-center"
+        >
+          <EyeIcon aria-hidden={true} />
+          <span>View</span>
         </Link>
         <button
           type="button"
           onClick={() => void startConversationForListing(l.id)}
           disabled={messagingListingId === l.id}
-          className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-60"
+          aria-label={messageLabel}
+          title={messageLabel}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-60 text-center"
         >
-          {messagingListingId === l.id ? 'Opening…' : 'Message Owner'}
+          <MessageIcon aria-hidden={true} />
+          <span>{messageLabel}</span>
         </button>
       </div>
     </li>
@@ -456,6 +483,70 @@ const SectionToggle = ({
     <span aria-hidden="true">{open ? '▾' : '▸'}</span>
     <span className="sr-only">{label}</span>
   </button>
+);
+
+type IconProps = { className?: string; 'aria-hidden'?: boolean };
+
+const EyeIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const SettingsIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 7.98 4a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 16 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+  </svg>
+);
+
+const CheckIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M4 12.5 9 17l11-11" />
+  </svg>
+);
+
+const MessageIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />
+  </svg>
 );
 
   return (

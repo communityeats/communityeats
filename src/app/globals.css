@@ -7,3 +7,13 @@
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
 }
+
+.dash-action-label {
+  display: inline;
+}
+
+@media (max-width: 640px) {
+  .dash-action-label {
+    display: none;
+  }
+}
