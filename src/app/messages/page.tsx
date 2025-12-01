@@ -15,9 +15,10 @@ type ConversationListItemProps = {
   isActive: boolean
   onSelect: (id: string) => void
   currentUid: string | null
+  isMobile: boolean
 }
 
-function ConversationListItem({ conversation, isActive, onSelect, currentUid }: ConversationListItemProps) {
+function ConversationListItem({ conversation, isActive, onSelect, currentUid, isMobile }: ConversationListItemProps) {
   const otherParticipant = useMemo(() => {
     if (!currentUid) return null
     return conversation.participant_uids.find((uid) => uid !== currentUid) ?? null
@@ -53,7 +54,9 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
       type="button"
       onClick={() => onSelect(conversation.id)}
       className={`w-full text-left border rounded p-3 transition ${
-        isActive ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-200'
+        isActive && !isMobile
+          ? 'border-indigo-500 bg-indigo-50'
+          : 'border-gray-200 hover:border-indigo-200'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -511,6 +514,7 @@ function MessagesPageContent() {
                       isActive={conversation.id === selectedConversationId}
                       onSelect={handleSelectConversation}
                       currentUid={currentUid}
+                      isMobile={isMobile}
                     />
                   ))}
                   {activeTab === 'active' && activeConversations.length > visibleCounts.active ? (

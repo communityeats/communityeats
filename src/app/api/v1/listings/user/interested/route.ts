@@ -126,7 +126,8 @@ export async function GET(req: Request) {
     }
 
     // 3) Map and sort in-memory by created_at desc then id desc
-    const listings = listingsDocs
+    // Use let so we can reassign when applying cursor filtering
+    let listings = listingsDocs
       .filter((d) => d && d.exists)
       .map((d) => {
         const data = d.data() as DocumentData | undefined
@@ -174,7 +175,7 @@ export async function GET(req: Request) {
 
     // 4) Apply cursor (created_at ISO + id) in-memory
     if (cursorMillis != null && cursorId) {
-      listings.filter((r) => {
+      listings = listings.filter((r) => {
         const rm = toMillis(r.created_at)
         if (rm === cursorMillis) {
           return r.id.localeCompare(cursorId) < 0 // id desc pagination

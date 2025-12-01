@@ -21,6 +21,34 @@ type InterestedResponse = {
   };
 };
 
+type MergeResult<T> = { merged: T[]; added: number };
+
+const mergeUniqueById = <T extends { id?: string | null }>(
+  prev: T[] | null | undefined,
+  next: T[]
+): MergeResult<T> => {
+  const seen = new Set<string>();
+  const merged: T[] = [];
+
+  for (const item of prev ?? []) {
+    const id = typeof item?.id === 'string' ? item.id : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(item);
+  }
+
+  let added = 0;
+  for (const item of next) {
+    const id = typeof item?.id === 'string' ? item.id : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(item);
+    added += 1;
+  }
+
+  return { merged, added };
+};
+
 export default function Dashboard() {
   const ITEMS_PER_PAGE = 6;
   const router = useRouter();
@@ -82,13 +110,14 @@ export default function Dashboard() {
       const data = await res.json();
       if (!cancelledRef.current) {
         const items = Array.isArray(data?.listings) ? (data.listings as ListingDoc[]) : [];
+        const { merged: uniqueItems } = mergeUniqueById<ListingDoc>([], items);
         if (status === 'available') {
-          setActiveListings(items);
+          setActiveListings(uniqueItems);
           setActiveVisibleCount(ITEMS_PER_PAGE);
           setActiveError(null);
           setActiveLoading(false);
         } else {
-          setClaimedListings(items);
+          setClaimedListings(uniqueItems);
           setClaimedVisibleCount(ITEMS_PER_PAGE);
           setClaimedError(null);
           setClaimedLoading(false);
@@ -111,6 +140,54 @@ export default function Dashboard() {
   },
   []
 );
+
+  const appendInterested = useCallback(
+    async (token: string, cursor: InterestedResponse['next_cursor'] | null = null) => {
+      let current = interested ?? [];
+      let nextCursor = cursor;
+      let addedTotal = 0;
+      let guard = 0;
+
+      while (guard < 5 && !cancelledRef.current) {
+        guard += 1;
+
+        const params = new URLSearchParams();
+        params.set('limit', ITEMS_PER_PAGE.toString());
+        if (nextCursor?.cursor_created_at) params.set('cursor_created_at', nextCursor.cursor_created_at);
+        if (nextCursor?.cursor_id) params.set('cursor_id', nextCursor.cursor_id);
+
+        const res = await fetch(`/api/v1/listings/user/interested?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+
+        if (res.status === 401) throw new Error('Unauthorized');
+        const body = (await res.json().catch(() => ({}))) as Partial<InterestedResponse>;
+        if (!res.ok || body?.success === false) {
+          throw new Error((body as { error?: string })?.error || `Request failed with ${res.status}`);
+        }
+
+        const page = body as InterestedResponse;
+        const activeListings = (page.listings ?? []).filter((item) => item.status === 'available');
+        const { merged, added } = mergeUniqueById(current, activeListings);
+        current = merged;
+        addedTotal += added;
+        nextCursor = page.next_cursor ?? null;
+
+        // If we actually added something or there is no more cursor, stop looping.
+        if (added > 0 || !nextCursor) break;
+      }
+
+      if (!cancelledRef.current) {
+        setInterested(current);
+        setInterestedNextCursor(nextCursor);
+        setInterestedError(null);
+      }
+
+      return addedTotal;
+    },
+    [ITEMS_PER_PAGE, interested]
+  );
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -139,7 +216,9 @@ export default function Dashboard() {
             return;
           }
           setIdToken(idToken);
-          await Promise.all([fetchUserListings(idToken, 'available'), fetchInterested(idToken)]);
+          setInterestedLoading(true);
+          await Promise.all([fetchUserListings(idToken, 'available'), appendInterested(idToken)]);
+          if (!cancelledRef.current) setInterestedLoading(false);
           return;
         }
 
@@ -163,19 +242,23 @@ export default function Dashboard() {
               return;
             }
             try {
+              setInterestedLoading(true);
               const idToken = await user.getIdToken();
               setUserUid(user.uid);
               setIdToken(idToken);
-              await Promise.all([fetchUserListings(idToken, 'available'), fetchInterested(idToken)]);
+              await Promise.all([fetchUserListings(idToken, 'available'), appendInterested(idToken)]);
+              if (!cancelledRef.current) setInterestedLoading(false);
             } catch {
               try {
+                setInterestedLoading(true);
                 const fresh = await user.getIdToken(true);
                 setUserUid(user.uid);
                 setIdToken(fresh);
                 await Promise.all([
                   fetchUserListings(fresh, 'available'),
-                  fetchInterested(fresh),
+                  appendInterested(fresh),
                 ]);
+                if (!cancelledRef.current) setInterestedLoading(false);
               } catch (err) {
                 if (!cancelledRef.current) {
                   const msg = (err as { message?: string })?.message || 'Failed to initialize';
@@ -205,43 +288,6 @@ export default function Dashboard() {
           setInterestedError(message);
           setInterested([]);
         }
-      }
-    };
-
-    // ---- Helpers
-    const fetchInterested = async (
-      token: string,
-      cursor?: InterestedResponse['next_cursor']
-    ) => {
-      setInterestedLoading(true);
-
-      const params = new URLSearchParams();
-      params.set('limit', ITEMS_PER_PAGE.toString());
-      if (cursor?.cursor_created_at) params.set('cursor_created_at', cursor.cursor_created_at);
-      if (cursor?.cursor_id) params.set('cursor_id', cursor.cursor_id);
-
-      const res = await fetch(
-        `/api/v1/listings/user/interested?${params.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: 'no-store',
-        }
-      );
-
-      if (res.status === 401) throw new Error('Unauthorized');
-      const body = (await res.json().catch(() => ({}))) as Partial<InterestedResponse>;
-
-      if (!res.ok || body?.success === false) {
-        throw new Error((body as { error?: string })?.error || `Request failed with ${res.status}`);
-      }
-
-      const page = body as InterestedResponse;
-      if (!cancelledRef.current) {
-        const activeListings = (page.listings ?? []).filter((item) => item.status === 'available');
-        setInterested((prev) => [...(prev ?? []), ...activeListings]);
-        setInterestedNextCursor(page.next_cursor ?? null);
-        setInterestedError(null);
-        setInterestedLoading(false);
       }
     };
 
@@ -335,7 +381,7 @@ export default function Dashboard() {
 
   // ---- Render helpers
   // ---- Render helpers (SYNC)
-const renderListingCardOwned = (l: ListingUserResponse) => {
+const renderListingCardOwned = (l: ListingUserResponse, keyPrefix: string) => {
   const firstImageId = Array.isArray(l.image_urls) && l.image_urls[0] ? l.image_urls[0] : null;
   const img = firstImageId;
 
@@ -347,7 +393,7 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
     isClaimed ? 'Claimed' : claimingId === l.id ? 'Marking…' : 'Confirm claimed';
 
   return (
-    <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
+    <li key={`${keyPrefix}-${l.id}`} className="border rounded-md overflow-hidden bg-white shadow-sm">
       {img ? (
         <img src={img} alt={l.title || l.id} className="w-full h-40 object-cover" />
       ) : (
@@ -410,7 +456,7 @@ const renderListingCardOwned = (l: ListingUserResponse) => {
   );
 };
 
-const renderListingCardSubscribed = (l: ListingUserResponse) => {
+const renderListingCardSubscribed = (l: ListingUserResponse, keyPrefix: string) => {
   const firstImageId = Array.isArray(l.image_urls) && l.image_urls[0] ? l.image_urls[0] : null;
   const img = firstImageId;
 
@@ -422,7 +468,7 @@ const renderListingCardSubscribed = (l: ListingUserResponse) => {
   const messageLabel = messagingListingId === l.id ? 'Opening…' : 'Message Owner';
 
   return (
-    <li key={l.id} className="border rounded-md overflow-hidden bg-white shadow-sm">
+    <li key={`${keyPrefix}-${l.id}`} className="border rounded-md overflow-hidden bg-white shadow-sm">
       {img ? (
         <img src={img} alt={l.title || l.id} className="w-full h-40 object-cover" />
       ) : (
@@ -586,7 +632,7 @@ const MessageIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {activeListings
                   .slice(0, activeVisibleCount)
-                  .map((l) => renderListingCardOwned(l as ListingUserResponse))}
+                  .map((l) => renderListingCardOwned(l as ListingUserResponse, 'active'))}
               </ul>
               {activeListings.length > activeVisibleCount ? (
                 <div className="mt-3">
@@ -634,7 +680,7 @@ const MessageIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
           ) : interested && interested.length > 0 ? (
             <>
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {interested.map((l) => renderListingCardSubscribed(l as ListingUserResponse))}
+                {interested.map((l) => renderListingCardSubscribed(l as ListingUserResponse, 'interested'))}
               </ul>
               {messageError ? (
                 <div className="mt-3 text-sm text-red-600">{messageError}</div>
@@ -694,7 +740,10 @@ const MessageIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
                       const activeListings = (page.listings ?? []).filter(
                         (item) => item.status === 'available'
                       );
-                      setInterested((prev) => [...(prev ?? []), ...activeListings]);
+                      setInterested((prev) => {
+                        const { merged } = mergeUniqueById(prev, activeListings);
+                        return merged;
+                      });
                       setInterestedNextCursor(page.next_cursor ?? null);
                       setInterestedError(null);
                       } catch (err: unknown) {
@@ -753,7 +802,7 @@ const MessageIcon = ({ className = 'w-4 h-4', ...props }: IconProps) => (
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {claimedListings
                   .slice(0, claimedVisibleCount)
-                  .map((l) => renderListingCardOwned(l as ListingUserResponse))}
+                  .map((l) => renderListingCardOwned(l as ListingUserResponse, 'claimed'))}
               </ul>
               {claimedListings.length > claimedVisibleCount ? (
                 <div className="mt-3">
