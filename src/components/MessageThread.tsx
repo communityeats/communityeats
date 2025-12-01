@@ -31,9 +31,15 @@ const toNameMap = (value: unknown): Record<string, string | null> => {
 
 type MessageThreadProps = {
   conversationId: string
+  onActivity?: (payload: {
+    conversationId: string
+    lastMessageAt: string | null
+    lastMessagePreview: string
+    lastMessageAuthorUid: string | null
+  }) => void
 }
 
-export default function MessageThread({ conversationId }: MessageThreadProps) {
+export default function MessageThread({ conversationId, onActivity }: MessageThreadProps) {
   const [idToken, setIdToken] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -139,6 +145,15 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
           : []
         setMessages(mapped)
         setParticipantNames(toNameMap(payload.participant_profiles))
+        const latest = mapped[mapped.length - 1]
+        if (latest && onActivity) {
+          onActivity({
+            conversationId,
+            lastMessageAt: latest.created_at,
+            lastMessagePreview: latest.body.slice(0, 200),
+            lastMessageAuthorUid: latest.author_uid || null,
+          })
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load messages')
         setMessages([])
@@ -146,7 +161,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         setLoading(false)
       }
     },
-    [conversationId]
+    [conversationId, onActivity]
   )
 
   useEffect(() => {
@@ -199,6 +214,15 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
         })
 
         setMessages(mapped)
+        const latest = mapped[mapped.length - 1]
+        if (latest && onActivity) {
+          onActivity({
+            conversationId,
+            lastMessageAt: latest.created_at,
+            lastMessagePreview: latest.body.slice(0, 200),
+            lastMessageAuthorUid: latest.author_uid || null,
+          })
+        }
         setLoading(false)
       },
       (snapshotError) => {
@@ -234,7 +258,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       unsubscribeMessages()
       unsubscribeConversation()
     }
-  }, [allowRealtime, conversationId, idToken])
+  }, [allowRealtime, conversationId, idToken, onActivity])
 
   const sendMessage = useCallback(async () => {
     if (!conversationId || !idToken || sending) return
@@ -264,6 +288,14 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
       if (payload.participant_profiles) {
         setParticipantNames(toNameMap(payload.participant_profiles))
       }
+      if (onActivity) {
+        onActivity({
+          conversationId,
+          lastMessageAt: payload.created_at || null,
+          lastMessagePreview: trimmed.slice(0, 200),
+          lastMessageAuthorUid: payload.author_uid || null,
+        })
+      }
       setInput('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send message'
@@ -271,7 +303,7 @@ export default function MessageThread({ conversationId }: MessageThreadProps) {
     } finally {
       setSending(false)
     }
-  }, [allowRealtime, conversationId, fetchMessages, idToken, input, sending])
+  }, [allowRealtime, conversationId, fetchMessages, idToken, input, onActivity, sending])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

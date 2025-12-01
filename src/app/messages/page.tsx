@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -8,6 +8,7 @@ import { auth } from '@/lib/firebase/client'
 import { listConversations } from '@/lib/api/chat'
 import type { ConversationDoc } from '@/lib/types/chat'
 import MessageThread from '@/components/MessageThread'
+import type { ListingStatus } from '@/lib/types/listing'
 
 type ConversationListItemProps = {
   conversation: ConversationDoc
@@ -40,6 +41,12 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
   const formattedTime = lastMessageTime && !Number.isNaN(lastMessageTime.valueOf())
     ? lastMessageTime.toLocaleString()
     : '—'
+  const statusLabel =
+    conversation.listing_status === 'claimed'
+      ? 'Claimed'
+      : conversation.listing_status === 'removed'
+        ? 'Archived'
+        : null
 
   return (
     <button
@@ -65,7 +72,14 @@ function ConversationListItem({ conversation, isActive, onSelect, currentUid }: 
             {otherParticipantName ? `With ${otherParticipantName}` : 'Conversation'}
           </p>
         </div>
-        <span className="text-[11px] text-gray-500 whitespace-nowrap shrink-0">{formattedTime}</span>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {statusLabel ? (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+              {statusLabel}
+            </span>
+          ) : null}
+          <span className="text-[11px] text-gray-500 whitespace-nowrap">{formattedTime}</span>
+        </div>
       </div>
     </button>
   )
@@ -85,6 +99,13 @@ function MessagesPageContent() {
   const [claimingListing, setClaimingListing] = useState(false)
   const [claimNotice, setClaimNotice] = useState<string | null>(null)
   const [claimIsError, setClaimIsError] = useState(false)
+  const [loadingStatuses, setLoadingStatuses] = useState(false)
+  const [listingStatusMap, setListingStatusMap] = useState<Record<string, ListingStatus | null>>({})
+  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active')
+  const [visibleCounts, setVisibleCounts] = useState<{ active: number; archived: number }>({
+    active: 5,
+    archived: 5,
+  })
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -115,16 +136,96 @@ function MessagesPageContent() {
     return () => unsubscribe()
   }, [])
 
+  const fetchListingStatuses = useCallback(
+    async (token: string, listingIds: string[]) => {
+      const uniqueIds = Array.from(
+        new Set(
+          listingIds
+            .map((id) => (typeof id === 'string' ? id.trim() : ''))
+            .filter((id) => id.length && !(id in listingStatusMap))
+        )
+      )
+      if (!uniqueIds.length) return {} as Record<string, ListingStatus | null>
+
+      setLoadingStatuses(true)
+      try {
+        const entries = await Promise.all(
+          uniqueIds.map(async (listingId) => {
+            try {
+              const res = await fetch(`/api/v1/listings/${listingId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                cache: 'no-store',
+              })
+              if (res.status === 404) {
+                return [listingId, 'removed' as ListingStatus]
+              }
+              const payload = (await res.json().catch(() => ({}))) as { status?: unknown }
+              const status =
+                typeof payload.status === 'string' &&
+                ['available', 'claimed', 'removed'].includes(payload.status)
+                  ? (payload.status as ListingStatus)
+                  : null
+              return [listingId, status] as const
+            } catch {
+              return [listingId, null] as const
+            }
+          })
+        )
+        const statusMap = entries.reduce<Record<string, ListingStatus | null>>((acc, [id, status]) => {
+          acc[id] = status
+          return acc
+        }, {})
+        const idSet = new Set(uniqueIds)
+        setListingStatusMap((prev) => ({ ...prev, ...statusMap }))
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            idSet.has(conversation.listing_id)
+              ? { ...conversation, listing_status: statusMap[conversation.listing_id] ?? null }
+              : conversation
+          )
+        )
+        return statusMap
+      } finally {
+        setLoadingStatuses(false)
+      }
+    },
+    [listingStatusMap]
+  )
+
   const fetchConversations = async (token: string) => {
     setLoading(true)
     setError(null)
+    setListingStatusMap({})
+    setVisibleCounts({ active: 5, archived: 5 })
     try {
-      const list = await listConversations(token)
-      setConversations(list)
-      if (list.length && !selectedConversationId) {
-        setSelectedConversationId(list[0].id)
-      } else if (selectedConversationId && !list.some((c) => c.id === selectedConversationId)) {
-        setSelectedConversationId(list[0]?.id ?? null)
+      const list = await listConversations(token, 50)
+      const listWithStatus = list.map((c) => ({
+        ...c,
+        listing_status: c.listing_status ?? null,
+      }))
+      setConversations(listWithStatus)
+
+      const pickInitial = () => {
+        const firstActive = listWithStatus.find(
+          (c) => c.listing_status !== 'claimed' && c.listing_status !== 'removed'
+        )
+        const firstArchived = listWithStatus.find(
+          (c) => c.listing_status === 'claimed' || c.listing_status === 'removed'
+        )
+        if (selectedConversationId && listWithStatus.some((c) => c.id === selectedConversationId)) {
+          return selectedConversationId
+        }
+        return firstActive?.id ?? firstArchived?.id ?? null
+      }
+      const nextSelected = pickInitial()
+      setSelectedConversationId(nextSelected)
+      if (!nextSelected) {
+        setActiveTab('active')
+      } else {
+        const selected = listWithStatus.find((c) => c.id === nextSelected)
+        const isArchived =
+          selected?.listing_status === 'claimed' || selected?.listing_status === 'removed'
+        setActiveTab(isArchived ? 'archived' : 'active')
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load conversations')
@@ -148,8 +249,36 @@ function MessagesPageContent() {
     setClaimNotice(null)
   }, [searchParams])
 
+  useEffect(() => {
+    const selected = conversations.find((c) => c.id === selectedConversationId)
+    if (!selected) return
+    const isArchived =
+      selected.listing_status === 'claimed' || selected.listing_status === 'removed'
+    setActiveTab(isArchived ? 'archived' : 'active')
+  }, [conversations, selectedConversationId])
+
+  const isArchivedConversation = (conversation: ConversationDoc) =>
+    conversation.listing_status === 'claimed' || conversation.listing_status === 'removed'
+
+  const activeConversations = conversations.filter((c) => !isArchivedConversation(c))
+  const archivedConversations = conversations.filter(isArchivedConversation)
+  const visibleActive = activeConversations.slice(0, visibleCounts.active)
+  const visibleArchived = archivedConversations.slice(0, visibleCounts.archived)
+  const displayedConversations = activeTab === 'active' ? visibleActive : visibleArchived
+
+  const conversationSortKey = useCallback((conversation: ConversationDoc) => {
+    const candidate = conversation.last_message_at ?? conversation.updated_at ?? conversation.created_at
+    const ts = candidate ? Date.parse(candidate) : 0
+    return Number.isNaN(ts) ? 0 : ts
+  }, [])
+
   const handleSelectConversation = (conversationId: string) => {
     setSelectedConversationId(conversationId)
+    const convo = conversations.find((c) => c.id === conversationId)
+    if (convo) {
+      const archived = isArchivedConversation(convo)
+      setActiveTab(archived ? 'archived' : 'active')
+    }
     const params = new URLSearchParams(searchParams)
     params.set('conversation', conversationId)
     router.push(`/messages?${params.toString()}`, { scroll: false })
@@ -166,6 +295,81 @@ function MessagesPageContent() {
         })
         .join(', ')
     : ''
+
+  useEffect(() => {
+    const activeIndex = activeConversations.findIndex((c) => c.id === selectedConversationId)
+    if (activeIndex >= visibleCounts.active) {
+      setVisibleCounts((prev) => ({ ...prev, active: activeIndex + 1 }))
+    }
+    const archivedIndex = archivedConversations.findIndex((c) => c.id === selectedConversationId)
+    if (archivedIndex >= visibleCounts.archived) {
+      setVisibleCounts((prev) => ({ ...prev, archived: archivedIndex + 1 }))
+    }
+  }, [
+    activeConversations,
+    archivedConversations,
+    selectedConversationId,
+    visibleCounts.active,
+    visibleCounts.archived,
+  ])
+
+  useEffect(() => {
+    if (!idToken || !conversations.length) return
+
+    const listForTab = activeTab === 'active' ? activeConversations : archivedConversations
+    const targetCount = Math.min(listForTab.length, visibleCounts[activeTab] + 5)
+    const idsToFetch = listForTab
+      .slice(0, targetCount)
+      .map((conversation) => conversation.listing_id.trim())
+      .filter((id): id is string => typeof id === 'string' && id.length > 0 && !(id in listingStatusMap))
+
+    if (idsToFetch.length) {
+      void fetchListingStatuses(idToken, idsToFetch)
+    }
+  }, [
+    activeTab,
+    activeConversations,
+    archivedConversations,
+    conversations.length,
+    fetchListingStatuses,
+    idToken,
+    listingStatusMap,
+    visibleCounts,
+  ])
+
+  const handleConversationActivity = useCallback(
+    ({
+      conversationId,
+      lastMessageAt,
+      lastMessagePreview,
+      lastMessageAuthorUid,
+    }: {
+      conversationId: string
+      lastMessageAt: string | null
+      lastMessagePreview: string
+      lastMessageAuthorUid: string | null
+    }) => {
+      const fallbackTime = lastMessageAt ?? new Date().toISOString()
+      setConversations((prev) => {
+        const existing = prev.find((c) => c.id === conversationId)
+        if (!existing) return prev
+
+        const nextConversation: ConversationDoc = {
+          ...existing,
+          last_message_preview: lastMessagePreview || existing.last_message_preview || null,
+          last_message_at: lastMessageAt ?? existing.last_message_at ?? null,
+          last_message_author_uid: lastMessageAuthorUid ?? existing.last_message_author_uid ?? null,
+          updated_at: fallbackTime,
+        }
+
+        const others = prev.filter((c) => c.id !== conversationId)
+        return [nextConversation, ...others].sort(
+          (a, b) => conversationSortKey(b) - conversationSortKey(a)
+        )
+      })
+    },
+    [conversationSortKey]
+  )
 
   const handleConfirmClaim = async () => {
     if (!selectedConversation || !idToken) return
@@ -188,6 +392,14 @@ function MessagesPageContent() {
       if (!res.ok || payload?.success === false) {
         throw new Error(payload?.error || `Request failed with ${res.status}`)
       }
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.listing_id === selectedConversation.listing_id
+            ? { ...c, listing_status: 'claimed' }
+            : c
+        )
+      )
+      setActiveTab('archived')
       setClaimNotice('Marked listing as claimed.')
       setClaimIsError(false)
     } catch (err: unknown) {
@@ -236,14 +448,40 @@ function MessagesPageContent() {
               <h2 className="text-sm font-semibold text-gray-700">Conversations</h2>
               {error ? (
                 <span className="text-xs text-red-600">{error}</span>
+              ) : loadingStatuses ? (
+                <span className="text-xs text-gray-500">Updating statuses…</span>
               ) : null}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('active')}
+                className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
+                  activeTab === 'active'
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                }`}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('archived')}
+                className={`flex-1 text-xs font-medium rounded border px-2 py-1 ${
+                  activeTab === 'archived'
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                }`}
+              >
+                Archived
+              </button>
             </div>
 
             {loading ? (
               <div className="text-sm text-gray-600">Loading conversations…</div>
-            ) : conversations.length ? (
+            ) : displayedConversations.length ? (
               <div className="space-y-2">
-                {conversations.map((conversation) => (
+                {displayedConversations.map((conversation) => (
                   <ConversationListItem
                     key={conversation.id}
                     conversation={conversation}
@@ -252,10 +490,40 @@ function MessagesPageContent() {
                     currentUid={currentUid}
                   />
                 ))}
+                {activeTab === 'active' && activeConversations.length > visibleCounts.active ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCounts((prev) => ({
+                        ...prev,
+                        active: prev.active + 5,
+                      }))
+                    }
+                    className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
+                  >
+                    Load 5 more
+                  </button>
+                ) : null}
+                {activeTab === 'archived' && archivedConversations.length > visibleCounts.archived ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCounts((prev) => ({
+                        ...prev,
+                        archived: prev.archived + 5,
+                      }))
+                    }
+                    className="w-full text-xs text-indigo-700 border border-indigo-200 rounded py-1 hover:bg-indigo-50"
+                  >
+                    Load 5 more
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-gray-600 border rounded p-3">
-                No conversations yet. Register interest in a listing or message an interested user to start chatting.
+                {activeTab === 'active'
+                  ? 'No active conversations.'
+                  : 'No archived conversations.'}
               </div>
             )}
           </aside>
@@ -301,7 +569,10 @@ function MessagesPageContent() {
                   </div>
                 ) : null}
                 <div className="flex-1">
-                  <MessageThread conversationId={selectedConversation.id} />
+                  <MessageThread
+                    conversationId={selectedConversation.id}
+                    onActivity={handleConversationActivity}
+                  />
                 </div>
               </>
             ) : (
