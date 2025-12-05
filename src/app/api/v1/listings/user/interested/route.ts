@@ -11,7 +11,7 @@ import {
 } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import { buildImageUrlFromId } from '@/lib/utils'
-import { formatPublicLocationLabel, toPublicLocation } from '@/lib/types/listing'
+import { formatPublicLocationLabel, toPublicLocation, type ListingLocation } from '@/lib/types/listing'
 
 export const runtime = 'nodejs'          // firebase-admin requires Node.js runtime
 export const dynamic = 'force-dynamic'   // avoid static caching of 404s, etc.
@@ -145,7 +145,7 @@ export async function GET(req: Request) {
         ).length
 
         const publicLocation = toPublicLocation({
-          location: (data?.location as { suburb?: unknown; state?: unknown; country?: unknown } | null) ?? null,
+          location: (data?.location as Partial<ListingLocation> | null) ?? null,
           country: data?.country,
           state: data?.state,
           suburb: data?.suburb,

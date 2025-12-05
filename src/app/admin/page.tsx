@@ -210,7 +210,7 @@ export default function AdminBoard() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {(LISTING_STATUSES as ListingStatus[]).map((status) => (
+        {LISTING_STATUSES.map((status) => (
           <div
             key={status}
             className="border border-emerald-100 bg-white rounded-lg p-4 shadow-sm flex items-center justify-between"
@@ -262,7 +262,7 @@ export default function AdminBoard() {
                       disabled={savingId === item.id || tableLoading}
                       className="border rounded-md px-2 py-1 text-sm focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60"
                     >
-                      {(LISTING_STATUSES as ListingStatus[]).map((status) => (
+                      {LISTING_STATUSES.map((status) => (
                         <option key={status} value={status}>
                           {prettyStatus[status]}
                         </option>

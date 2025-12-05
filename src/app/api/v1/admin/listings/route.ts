@@ -6,6 +6,7 @@ import {
   LISTING_STATUSES,
   formatPublicLocationLabel,
   toPublicLocation,
+  type ListingLocation,
   type ListingStatus,
 } from '@/lib/types/listing'
 
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     const listings = snapshot.docs.map((doc) => {
       const data = doc.data()
       const publicLocation = toPublicLocation({
-        location: (data as { location?: { suburb?: unknown; state?: unknown; country?: unknown } }).location,
+        location: (data as { location?: Partial<ListingLocation> | null }).location ?? undefined,
         country: (data as { country?: unknown }).country,
         state: (data as { state?: unknown }).state,
         suburb: (data as { suburb?: unknown }).suburb,
