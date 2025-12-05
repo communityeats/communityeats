@@ -121,6 +121,12 @@ export default async function Home() {
               >
                 Offer food
               </Link>
+              <Link
+                href="/feedback"
+                className="inline-flex items-center justify-center px-6 py-4 rounded-md bg-amber-500 text-white font-semibold shadow-lg hover:bg-amber-600 transition-colors w-full sm:w-auto"
+              >
+                Give feedback
+              </Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
               {featurePoints.map((feature) => (
