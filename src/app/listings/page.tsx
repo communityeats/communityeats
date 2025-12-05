@@ -182,17 +182,17 @@ export default function ListingsPage() {
   }, [listings, sortOption])
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-6 pb-24 sm:pb-0">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold">Food Listings</h1>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full sm:w-auto">
+          <label className="flex items-center gap-2 text-sm text-gray-600 w-full sm:w-auto">
             <span className="font-medium text-gray-700">Sort by</span>
             <select
               id="listing-sort"
               value={sortOption}
               onChange={handleSortChange}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 w-full sm:w-auto"
             >
               <option value="recent">Most recent</option>
               <option value="nearest">Nearest to me</option>
@@ -213,11 +213,11 @@ export default function ListingsPage() {
             <p className="text-sm text-gray-500">Locating you…</p>
           )}
           {locationError && !locationLoading && (
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <p className="text-red-600">{locationError}</p>
-              <button
-                type="button"
-                onClick={() => {
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <p className="text-red-600">{locationError}</p>
+          <button
+            type="button"
+            onClick={() => {
                   setLocationError(null)
                   void ensureLocation()
                 }}
@@ -244,7 +244,7 @@ export default function ListingsPage() {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {displayListings.map((listing) => (
               <ListingCard
                 key={listing.id}
@@ -261,7 +261,7 @@ export default function ListingsPage() {
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="inline-flex items-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:opacity-60"
+                className="inline-flex items-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:opacity-60 w-full sm:w-auto justify-center"
               >
                 {loadingMore ? 'Loading...' : 'Load more'}
               </button>
@@ -269,6 +269,37 @@ export default function ListingsPage() {
           )}
         </>
       )}
+
+      {/* Mobile quick actions */}
+      <div className="fixed inset-x-0 bottom-0 sm:hidden pointer-events-none">
+        <div className="mx-auto max-w-6xl px-4 pb-4">
+          <div
+            className="pointer-events-auto flex items-center gap-3 rounded-2xl border bg-white px-4 py-3 shadow-lg"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+          >
+            <div className="flex-1">
+              <label htmlFor="listing-sort-mobile" className="block text-xs font-semibold text-gray-700 mb-1">
+                Sort listings
+              </label>
+              <select
+                id="listing-sort-mobile"
+                value={sortOption}
+                onChange={handleSortChange}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              >
+                <option value="recent">Most recent</option>
+                <option value="nearest">Nearest to me</option>
+              </select>
+            </div>
+            <Link
+              href="/listings/new"
+              className="inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 whitespace-nowrap"
+            >
+              + New
+            </Link>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }
