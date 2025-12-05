@@ -68,6 +68,7 @@ export default function Dashboard() {
   const [interestedError, setInterestedError] = useState<string | null>(null);
   const [interestedNextCursor, setInterestedNextCursor] =
     useState<InterestedResponse['next_cursor']>(null);
+  const interestedRef = useRef<ListingDoc[] | null>(null);
 
   // Track current user UID to compute “others interested”
   const [userUid, setUserUid] = useState<string | null>(null);
@@ -143,7 +144,7 @@ export default function Dashboard() {
 
   const appendInterested = useCallback(
     async (token: string, cursor: InterestedResponse['next_cursor'] | null = null) => {
-      let current = interested ?? [];
+      let current = interestedRef.current ?? [];
       let nextCursor = cursor;
       let addedTotal = 0;
       let guard = 0;
@@ -186,8 +187,12 @@ export default function Dashboard() {
 
       return addedTotal;
     },
-    [ITEMS_PER_PAGE, interested]
+    [ITEMS_PER_PAGE]
   );
+
+  useEffect(() => {
+    interestedRef.current = interested;
+  }, [interested]);
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
