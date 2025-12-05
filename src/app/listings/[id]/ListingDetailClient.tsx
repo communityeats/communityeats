@@ -270,7 +270,6 @@ export default function ListingDetailClient({ id }: { id: string }) {
                 {location.suburb && <p><strong>Suburb:</strong> {location.suburb}</p>}
                 {location.state && <p><strong>State:</strong> {location.state}</p>}
                 {location.country && <p><strong>Country:</strong> {location.country}</p>}
-                {location.postcode !== undefined && <p><strong>Postcode:</strong> {location.postcode}</p>}
               </section>
             )}
 

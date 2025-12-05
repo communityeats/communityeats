@@ -11,6 +11,7 @@ import {
 } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import { buildImageUrlFromId } from '@/lib/utils'
+import { formatPublicLocationLabel, toPublicLocation } from '@/lib/types/listing'
 
 export const runtime = 'nodejs'          // firebase-admin requires Node.js runtime
 export const dynamic = 'force-dynamic'   // avoid static caching of 404s, etc.
@@ -143,6 +144,14 @@ export async function GET(req: Request) {
           (uid) => uid !== ownerUserId
         ).length
 
+        const publicLocation = toPublicLocation({
+          location: (data?.location as { suburb?: unknown; state?: unknown; country?: unknown } | null) ?? null,
+          country: data?.country,
+          state: data?.state,
+          suburb: data?.suburb,
+        })
+        const location_label = formatPublicLocationLabel(publicLocation)
+
         return {
           id: d.id,
           title: typeof data?.title === 'string' ? data.title : '',
@@ -157,9 +166,8 @@ export async function GET(req: Request) {
             : [],
           thumbnail_id: typeof data?.thumbnail_id === 'string' ? data.thumbnail_id : null,
           user_id: ownerUserId,
-          location: typeof data?.location === 'object' && data?.location !== null
-            ? data.location
-            : {},
+          location: publicLocation,
+          location_label,
           interested_user_count,
           has_registered_interest: true,
         }

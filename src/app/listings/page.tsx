@@ -10,9 +10,11 @@ type Listing = {
   thumbnail_url?: string | null
   created_at?: string
   location?: {
-    latitude?: number | null
-    longitude?: number | null
+    suburb?: string | null
+    state?: string | null
+    country?: string | null
   }
+  distanceKm?: number | null
 }
 
 type SortOption = 'recent' | 'nearest'
@@ -21,33 +23,7 @@ type Coordinates = { latitude: number; longitude: number }
 
 type ListingWithDistance = Listing & { distanceKm?: number | null }
 
-const EARTH_RADIUS_KM = 6371
 const GEOLOCATION_PERMISSION_DENIED = 1
-
-const toRadians = (degrees: number) => (degrees * Math.PI) / 180
-
-const calculateDistanceKm = (from: Coordinates, to: Coordinates) => {
-  const dLat = toRadians(to.latitude - from.latitude)
-  const dLon = toRadians(to.longitude - from.longitude)
-  const lat1 = toRadians(from.latitude)
-  const lat2 = toRadians(to.latitude)
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2)
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return EARTH_RADIUS_KM * c
-}
-
-const toFiniteNumber = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  return null
-}
 
 const PAGE_LIMIT = 9
 
@@ -178,14 +154,12 @@ export default function ListingsPage() {
   )
 
   const displayListings: ListingWithDistance[] = useMemo(() => {
-    if (sortOption === 'nearest' && userCoords) {
+    if (sortOption === 'nearest') {
       return listings
         .map((listing) => {
-          const latitude = toFiniteNumber(listing.location?.latitude)
-          const longitude = toFiniteNumber(listing.location?.longitude)
           const distanceKm =
-            latitude !== null && longitude !== null
-              ? calculateDistanceKm(userCoords, { latitude, longitude })
+            typeof listing.distanceKm === 'number' && Number.isFinite(listing.distanceKm)
+              ? listing.distanceKm
               : null
 
           return { ...listing, distanceKm }
@@ -205,7 +179,7 @@ export default function ListingsPage() {
     }
 
     return listings.map((listing) => ({ ...listing, distanceKm: null }))
-  }, [listings, sortOption, userCoords])
+  }, [listings, sortOption])
 
   return (
     <section className="space-y-6">

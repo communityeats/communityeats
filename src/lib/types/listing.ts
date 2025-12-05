@@ -60,6 +60,34 @@ export interface ListingDoc {
   postcode?: number
 }
 
+type LocationSource = {
+  location?: Partial<ListingLocation> | null
+  country?: unknown
+  state?: unknown
+  suburb?: unknown
+}
+
+const normalizeLocationPart = (value: unknown) =>
+  typeof value === 'string' && value.trim() ? value.trim() : ''
+
+export const toPublicLocation = (source: LocationSource): Pick<ListingLocation, 'country' | 'state' | 'suburb'> => {
+  const loc = source.location ?? {}
+  return {
+    country: normalizeLocationPart(loc.country ?? source.country),
+    state: normalizeLocationPart(loc.state ?? source.state),
+    suburb: normalizeLocationPart(loc.suburb ?? source.suburb),
+  }
+}
+
+export const formatPublicLocationLabel = (
+  location: Pick<ListingLocation, 'country' | 'state' | 'suburb'>
+): string | null => {
+  const parts = [location.suburb, location.state, location.country].filter(
+    (part): part is string => typeof part === 'string' && part.trim().length > 0
+  )
+  return parts.length ? parts.join(', ') : null
+}
+
 export function isListingStatus(value: unknown): value is ListingStatus {
   return typeof value === 'string' && (LISTING_STATUSES as readonly string[]).includes(value)
 }

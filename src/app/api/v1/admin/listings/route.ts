@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getFirestore } from 'firebase-admin/firestore'
 import { initAdmin } from '@/lib/firebase/admin'
 import { AdminAuthError, verifyAdminToken } from '@/lib/admin/auth'
-import { LISTING_STATUSES, type ListingStatus } from '@/lib/types/listing'
+import {
+  LISTING_STATUSES,
+  formatPublicLocationLabel,
+  toPublicLocation,
+  type ListingStatus,
+} from '@/lib/types/listing'
 
 initAdmin()
 
@@ -27,10 +32,13 @@ export async function GET(req: NextRequest) {
 
     const listings = snapshot.docs.map((doc) => {
       const data = doc.data()
-      const location =
-        (data as { location?: { label?: string | null } }).location?.label ||
-        (data as { location_label?: string }).location_label ||
-        null
+      const publicLocation = toPublicLocation({
+        location: (data as { location?: { suburb?: unknown; state?: unknown; country?: unknown } }).location,
+        country: (data as { country?: unknown }).country,
+        state: (data as { state?: unknown }).state,
+        suburb: (data as { suburb?: unknown }).suburb,
+      })
+      const location = formatPublicLocationLabel(publicLocation)
 
       const interested = Array.isArray((data as { interested_users_uids?: unknown }).interested_users_uids)
         ? ((data as { interested_users_uids: unknown[] }).interested_users_uids.length ?? 0)
