@@ -111,6 +111,7 @@ function MessagesPageContent() {
   })
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list')
+  const [threadHeight, setThreadHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -131,6 +132,39 @@ function MessagesPageContent() {
     query.addListener(handleChange)
     return () => query.removeListener(handleChange)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isMobile) {
+      setThreadHeight(null)
+      return
+    }
+
+    // Keep the thread visible when the virtual keyboard shrinks the viewport
+    const reserveSpacePx = 200
+    const applyHeight = () => {
+      const viewportHeight =
+        typeof window !== 'undefined' && window.visualViewport
+          ? window.visualViewport.height
+          : window.innerHeight
+      const available = viewportHeight ? viewportHeight - reserveSpacePx : null
+      if (available === null) return
+      const clamped = Math.max(260, Math.min(available, 720))
+      setThreadHeight(clamped)
+    }
+
+    applyHeight()
+    window.addEventListener('resize', applyHeight)
+    const viewport = window.visualViewport
+    viewport?.addEventListener('resize', applyHeight)
+    viewport?.addEventListener('scroll', applyHeight)
+
+    return () => {
+      window.removeEventListener('resize', applyHeight)
+      viewport?.removeEventListener('resize', applyHeight)
+      viewport?.removeEventListener('scroll', applyHeight)
+    }
+  }, [isMobile])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -563,7 +597,10 @@ function MessagesPageContent() {
 
           {(!isMobile || mobileView === 'thread') ? (
             <section
-              className={`border rounded h-[500px] flex flex-col ${isMobile ? '' : 'lg:col-span-2'}`}
+              className={`border rounded flex flex-col overflow-hidden h-[520px] min-h-[260px] ${
+                isMobile ? '' : 'lg:col-span-2 lg:h-[620px]'
+              }`}
+              style={isMobile && threadHeight ? { height: threadHeight } : undefined}
             >
               {selectedConversation ? (
                 <>

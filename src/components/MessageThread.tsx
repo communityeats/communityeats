@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, FormEvent } from 'react'
+import { useEffect, useState, useCallback, FormEvent, useRef } from 'react'
 import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase/client'
 
@@ -49,6 +49,8 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
   const [allowRealtime, setAllowRealtime] = useState<boolean>(false)
   const [participantNames, setParticipantNames] = useState<Record<string, string | null>>({})
   const [currentUid, setCurrentUid] = useState<string | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -163,6 +165,16 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
     },
     [conversationId, onActivity]
   )
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior })
+  }, [])
+
+  useEffect(() => {
+    scrollMessagesToBottom()
+  }, [messages, scrollMessagesToBottom])
 
   useEffect(() => {
     if (!conversationId || !idToken || allowRealtime) return
@@ -310,6 +322,11 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
     void sendMessage()
   }
 
+  const handleFocusInput = () => {
+    scrollMessagesToBottom('smooth')
+    textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
   if (!conversationId) {
     return <div className="text-sm text-gray-600">Conversation id missing.</div>
   }
@@ -319,8 +336,11 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
   }
 
   return (
-    <div className="flex flex-col h-full border rounded">
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
+    <div className="flex flex-col h-full border rounded bg-white overflow-hidden">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50"
+      >
         {loading ? (
           <div className="text-sm text-gray-600">Loading messages…</div>
         ) : error ? (
@@ -346,21 +366,27 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t p-3 space-y-2">
+      <form
+        onSubmit={handleSubmit}
+        className="border-t p-3 space-y-2 bg-white"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
+      >
         <textarea
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            void sendMessage()
-          }
-        }}
-        className="w-full border rounded p-2 text-sm"
-        rows={3}
-        placeholder="Say something nice!"
-        disabled={sending}
-      />
+          ref={textareaRef}
+          value={input}
+          onFocus={handleFocusInput}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void sendMessage()
+            }
+          }}
+          className="w-full border rounded p-2 text-sm"
+          rows={3}
+          placeholder="Say something nice!"
+          disabled={sending}
+        />
         <div className="flex justify-end">
           <button
             type="submit"
