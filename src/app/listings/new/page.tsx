@@ -12,6 +12,7 @@ import {
 import LocationAutocomplete, {
   type LocationSelection,
 } from '@/components/LocationAutocomplete'
+import AuthGuard from '@/components/AuthGuard'
 
 type FormState = {
   title: string
@@ -183,68 +184,70 @@ export default function NewListingPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold mb-4">Create New Listing</h1>
-      {error && <div className="bg-red-100 text-red-800 p-2 rounded mb-4">{error}</div>}
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <AuthGuard>
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-2xl font-semibold mb-4">Create New Listing</h1>
+        {error && <div className="bg-red-100 text-red-800 p-2 rounded mb-4">{error}</div>}
+        <form onSubmit={handleSubmit} className="space-y-4">
 
-        <input name="title" placeholder="Title" className="w-full p-2 border rounded" onChange={handleChange} required />
-        <textarea name="description" placeholder="Description" className="w-full p-2 border rounded" onChange={handleChange} required />
+          <input name="title" placeholder="Title" className="w-full p-2 border rounded" onChange={handleChange} required />
+          <textarea name="description" placeholder="Description" className="w-full p-2 border rounded" onChange={handleChange} required />
 
-        <LocationAutocomplete
-          apiKey={googleMapsApiKey}
-          value={locationSelection}
-          onChange={(selection) => {
-            setLocationSelection(selection)
-            setLocationError(null)
-          }}
-          onError={(message) => {
-            setLocationError(message)
-            if (message) setError(message)
-          }}
-          error={locationError}
-          disabled={!googleMapsApiKey}
-          placeholder="Start typing an address"
-        />
-        {!googleMapsApiKey ? (
-          <p className="text-sm text-red-600">
-            Configure `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in your environment to enable location search.
-          </p>
-        ) : null}
+          <LocationAutocomplete
+            apiKey={googleMapsApiKey}
+            value={locationSelection}
+            onChange={(selection) => {
+              setLocationSelection(selection)
+              setLocationError(null)
+            }}
+            onError={(message) => {
+              setLocationError(message)
+              if (message) setError(message)
+            }}
+            error={locationError}
+            disabled={!googleMapsApiKey}
+            placeholder="Start typing an address"
+          />
+          {!googleMapsApiKey ? (
+            <p className="text-sm text-red-600">
+              Configure `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in your environment to enable location search.
+            </p>
+          ) : null}
 
-        <select name="exchange_type" className="w-full p-2 border rounded" onChange={handleChange} required>
-          <option value="">Select Exchange Type</option>
-          {EXCHANGE_TYPES.map((type) => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
+          <select name="exchange_type" className="w-full p-2 border rounded" onChange={handleChange} required>
+            <option value="">Select Exchange Type</option>
+            {EXCHANGE_TYPES.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
 
-        <input name="contact_info" placeholder="Contact Info (optional)" className="w-full p-2 border rounded" onChange={handleChange} />
-        
-        <div>
-          <label className="block mb-1">Upload Images</label>
-          <input type="file" multiple accept="image/*" onChange={handleImageUpload} />
-        </div>
-
-        {images.length > 0 && (
+          <input name="contact_info" placeholder="Contact Info (optional)" className="w-full p-2 border rounded" onChange={handleChange} />
+          
           <div>
-            <label className="block mt-4 mb-1">Select Thumbnail</label>
-            <select value={thumbnailId ?? ''} onChange={(e) => setThumbnailId(e.target.value)} className="w-full p-2 border rounded">
-              {images.map(file => (
-                <option key={file.name} value={file.name}>{file.name}</option>
-              ))}
-            </select>
+            <label className="block mb-1">Upload Images</label>
+            <input type="file" multiple accept="image/*" onChange={handleImageUpload} />
           </div>
-        )}
 
-        <label className="inline-flex items-center">
-          <input type="checkbox" name="anonymous" className="mr-2" onChange={handleChange} />
-          Post anonymously
-        </label>
-        <br/>
+          {images.length > 0 && (
+            <div>
+              <label className="block mt-4 mb-1">Select Thumbnail</label>
+              <select value={thumbnailId ?? ''} onChange={(e) => setThumbnailId(e.target.value)} className="w-full p-2 border rounded">
+                {images.map(file => (
+                  <option key={file.name} value={file.name}>{file.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-        <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Create Listing</button>
-      </form>
-    </div>
+          <label className="inline-flex items-center">
+            <input type="checkbox" name="anonymous" className="mr-2" onChange={handleChange} />
+            Post anonymously
+          </label>
+          <br/>
+
+          <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Create Listing</button>
+        </form>
+      </div>
+    </AuthGuard>
   )
 }

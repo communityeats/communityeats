@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { initAdmin, getFirestore, getStorage } from '@/lib/firebase/admin'
 import { getAuth } from 'firebase-admin/auth'
-import type { ListingDoc } from '@/lib/types/listing'
+import type { ListingDoc, ListingLocation } from '@/lib/types/listing'
+import { formatPublicLocationLabel, toPublicLocation } from '@/lib/types/listing'
 
 initAdmin()
 
@@ -60,12 +61,41 @@ export async function GET(
     const interested_user_count = interestedUserIds.filter((u) => u !== ownerUserId).length
     const has_registered_interest = !!userId && interestedUserIds.includes(userId) && !isOwner
 
-    // If you want to strip fields without unused-var lint:
-    const { interested_users_uids, user_id, ...publicData } = data
-    void interested_users_uids; void user_id
+    const publicLocation = toPublicLocation({
+      location: (data as { location?: Partial<ListingLocation> | null }).location ?? null,
+      country: data.country,
+      state: data.state,
+      suburb: data.suburb,
+    })
+    const ownerLocation = isOwner
+      ? {
+          ...publicLocation,
+          ...(typeof data.location?.postcode === 'number' ? { postcode: data.location.postcode } : {}),
+          ...(typeof data.location?.latitude === 'number' ? { latitude: data.location.latitude } : {}),
+          ...(typeof data.location?.longitude === 'number' ? { longitude: data.location.longitude } : {}),
+        }
+      : publicLocation
+    const location_label = formatPublicLocationLabel(publicLocation)
+
+    const {
+      interested_users_uids,
+      user_id,
+      location: _location,
+      location_place_id: _locationPlaceId,
+      location_label: _deprecatedLocationLabel,
+      postcode: _deprecatedPostcode,
+      ...rest
+    } = data
+    void interested_users_uids
+    void user_id
 
     return NextResponse.json({
-      ...publicData,
+      ...rest,
+      country: publicLocation.country,
+      state: publicLocation.state,
+      suburb: publicLocation.suburb,
+      location: ownerLocation,
+      location_label,
       user_id: ownerUserId,
       image_urls,
       interested_user_count,

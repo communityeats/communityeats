@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { initAdmin, getFirestore } from '@/lib/firebase/admin'
+import { toPublicLocation, formatPublicLocationLabel, type ListingLocation } from '@/lib/types/listing'
 import { buildImageUrlFromId } from '@/lib/utils'
 
 initAdmin()
 
 type Coordinates = { latitude: number; longitude: number }
+type CoordinatesOrNull = { latitude: number | null; longitude: number | null }
 
 const EARTH_RADIUS_KM = 6371
 
@@ -54,8 +56,18 @@ export async function GET(req: NextRequest) {
     const listingsWithImages = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const data = doc.data()
-        const uid = data.user_id
-        const thumbId = data.thumbnail_id
+        const uid = (data as { user_id?: string }).user_id
+        const thumbId = (data as { thumbnail_id?: string }).thumbnail_id
+        const rawLocation =
+          (data as { location?: Partial<ListingLocation> | null }).location ?? null
+
+        const publicLocation = toPublicLocation({
+          location: rawLocation,
+          country: (data as { country?: unknown }).country,
+          state: (data as { state?: unknown }).state,
+          suburb: (data as { suburb?: unknown }).suburb,
+        })
+        const location_label = formatPublicLocationLabel(publicLocation)
 
         let thumbnail_url = null
         try {
@@ -66,33 +78,72 @@ export async function GET(req: NextRequest) {
           console.warn(`Image missing for listing ${doc.id}`, err)
         }
 
+        const coords: CoordinatesOrNull =
+          rawLocation && typeof rawLocation === 'object'
+            ? {
+                latitude:
+                  typeof rawLocation.latitude === 'number' && Number.isFinite(rawLocation.latitude)
+                    ? rawLocation.latitude
+                    : null,
+                longitude:
+                  typeof rawLocation.longitude === 'number' &&
+                  Number.isFinite(rawLocation.longitude)
+                    ? rawLocation.longitude
+                    : null,
+              }
+            : { latitude: null, longitude: null }
+
+        const {
+          location: _location,
+          location_place_id: _locationPlaceId,
+          location_label: _deprecatedLocationLabel,
+          postcode: _deprecatedPostcode,
+          ...rest
+        } = data
+
         return {
           id: doc.id,
-          ...data,
+          ...rest,
+          country: publicLocation.country,
+          state: publicLocation.state,
+          suburb: publicLocation.suburb,
+          location: publicLocation,
+          location_label,
           thumbnail_url,
+          _coords: coords,
         }
       })
     )
 
+    const stripCoords = (listing: { _coords?: CoordinatesOrNull | null }) => {
+      const { _coords, ...rest } = listing
+      return rest
+    }
+
     if (!shouldSortByNearest) {
-      return NextResponse.json(listingsWithImages)
+      return NextResponse.json(listingsWithImages.map(stripCoords))
     }
 
     const userCoords = { latitude, longitude }
     const withDistance = listingsWithImages.map((listing) => {
-      const loc = (listing as { location?: { latitude?: number; longitude?: number } }).location
-      const lat = Number.isFinite(loc?.latitude) ? Number(loc?.latitude) : null
-      const lon = Number.isFinite(loc?.longitude) ? Number(loc?.longitude) : null
-
+      const coords = listing._coords
       const distanceKm =
-        lat !== null && lon !== null
-          ? calculateDistanceKm(userCoords, { latitude: lat, longitude: lon })
+        coords && coords.latitude !== null && coords.longitude !== null
+          ? calculateDistanceKm(userCoords, {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            })
           : Number.POSITIVE_INFINITY
 
-      return { ...listing, distanceKm }
+      const { _coords, ...rest } = listing
+      return { ...rest, distanceKm: Number.isFinite(distanceKm) ? distanceKm : null }
     })
 
-    withDistance.sort((a, b) => a.distanceKm - b.distanceKm)
+    withDistance.sort((a, b) => {
+      const aDistance = typeof a.distanceKm === 'number' ? a.distanceKm : Number.POSITIVE_INFINITY
+      const bDistance = typeof b.distanceKm === 'number' ? b.distanceKm : Number.POSITIVE_INFINITY
+      return aDistance - bDistance
+    })
 
     const start = (page - 1) * limitCount
     const sliced = withDistance.slice(start, start + limitCount)
