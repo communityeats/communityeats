@@ -11,7 +11,14 @@ import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
 
-const REQUIRED_FIELDS = ['title', 'description', 'exchange_type', 'thumbnail_id', 'image_ids'] as const
+const REQUIRED_FIELDS = [
+  'title',
+  'description',
+  'exchange_type',
+  'thumbnail_id',
+  'image_ids',
+  'terms_acknowledged',
+] as const
 
 export async function POST(req: Request) {
   try {
@@ -47,6 +54,10 @@ export async function POST(req: Request) {
 
     if (!isExchangeType(data.exchange_type)) {
       return NextResponse.json({ error: 'Invalid exchange type' }, { status: 400 })
+    }
+
+    if (data.terms_acknowledged !== true) {
+      return NextResponse.json({ error: 'You must accept the terms before posting.' }, { status: 400 })
     }
 
     if (typeof data.thumbnail_id !== 'string') {
@@ -96,6 +107,7 @@ export async function POST(req: Request) {
       image_ids: imageIds,
       thumbnail_id: data.thumbnail_id,
       anonymous: Boolean(data.anonymous),
+      terms_acknowledged: true,
       interested_users_uids: [],
       status: 'available',
       updated_at: new Date().toISOString(),

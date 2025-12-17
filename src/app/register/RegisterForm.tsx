@@ -12,10 +12,16 @@ export default function RegisterForm({ redirect }: { redirect: string }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!acceptedTerms || !acceptedPrivacy) {
+      setError("Please accept the Terms & Conditions and Privacy Policy to continue.");
+      return;
+    }
     setLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -25,7 +31,12 @@ export default function RegisterForm({ redirect }: { redirect: string }) {
       const res = await fetch("/api/v1/account/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({
+          name,
+          email,
+          acceptedTerms,
+          acceptedPrivacy,
+        }),
       });
       if (!res.ok) {
         let msg = "Failed to save user profile";
@@ -98,6 +109,41 @@ export default function RegisterForm({ redirect }: { redirect: string }) {
                 className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-green-500 focus:border-green-500"
                 placeholder="••••••••"
               />
+            </div>
+
+            <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  required
+                />
+                <span>
+                  I accept the{" "}
+                  <a href="/terms" className="text-green-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                    Terms & Conditions
+                  </a>
+                  .
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptedPrivacy}
+                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  required
+                />
+                <span>
+                  I have read and accept the{" "}
+                  <a href="/privacy" className="text-green-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                    Privacy Policy
+                  </a>
+                  .
+                </span>
+              </label>
             </div>
 
             {error && <p className="text-red-500 text-sm">{error}</p>}
