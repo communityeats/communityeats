@@ -106,7 +106,7 @@ export default async function Home() {
             </h1>
             <p className="text-lg text-gray-700 max-w-3xl mx-auto lg:mx-0">
               Post extra meals, produce, or pantry items in seconds. Local families can claim what they need,
-              and you keep good food out of landfills. Edit this copy anytime to match your mission.
+              and you keep good food out of landfills.
             </p>
             <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:justify-start sm:items-center items-stretch">
               <Link
@@ -174,9 +174,6 @@ export default async function Home() {
                   </div>
                 </div>
               ))}
-            </div>
-            <div className="pt-2 text-xs text-gray-500 text-center">
-              Need different messaging? Swap these blurbs in <code className="font-mono">src/app/page.tsx</code>.
             </div>
           </div>
         </section>

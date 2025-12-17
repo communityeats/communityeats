@@ -8,6 +8,8 @@ initAdmin()
 type Body = {
   name?: string
   email?: string
+  acceptedTerms?: unknown
+  acceptedPrivacy?: unknown
 }
 
 export async function POST(req: NextRequest) {
@@ -25,6 +27,8 @@ export async function POST(req: NextRequest) {
     const body: Body = await req.json().catch(() => ({}))
     const rawName = typeof body.name === 'string' ? body.name : ''
     const rawEmail = typeof body.email === 'string' ? body.email : ''
+    const acceptedTerms = body.acceptedTerms === true
+    const acceptedPrivacy = body.acceptedPrivacy === true
 
     const name = rawName.trim()
     const email = rawEmail.trim()
@@ -33,6 +37,13 @@ export async function POST(req: NextRequest) {
     if (!name || name.length > 100) {
       return NextResponse.json(
         { error: 'Invalid name. Provide a non-empty name up to 100 characters.' },
+        { status: 400 }
+      )
+    }
+
+    if (!acceptedTerms || !acceptedPrivacy) {
+      return NextResponse.json(
+        { error: 'You must accept the Terms & Conditions and Privacy Policy to create an account.' },
         { status: 400 }
       )
     }
@@ -58,11 +69,17 @@ export async function POST(req: NextRequest) {
 
     // Decide 200 vs 201 by checking existence
     const existing = await userRef.get()
+    const existingTermsAt = existing.exists ? existing.get('accepted_terms_at') ?? null : null
+    const existingPrivacyAt = existing.exists ? existing.get('accepted_privacy_at') ?? null : null
     await userRef.set(
       {
         name,
         email: finalEmail,
         email_verified: !!decoded.email_verified,
+        accepted_terms: true,
+        accepted_privacy: true,
+        accepted_terms_at: existingTermsAt ?? FieldValue.serverTimestamp(),
+        accepted_privacy_at: existingPrivacyAt ?? FieldValue.serverTimestamp(),
         // server timestamps for consistent ordering
         updated_at: FieldValue.serverTimestamp(),
         ...(existing.exists ? {} : { created_at: FieldValue.serverTimestamp() }),

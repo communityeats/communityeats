@@ -20,6 +20,7 @@ type FormState = {
   exchange_type: ExchangeType | ''
   contact_info: string
   anonymous: boolean
+  termsAccepted: boolean
 }
 
 export default function NewListingPage() {
@@ -30,6 +31,7 @@ export default function NewListingPage() {
     exchange_type: '',
     contact_info: '',
     anonymous: false,
+    termsAccepted: false,
   })
   const [images, setImages] = useState<File[]>([])
   const [thumbnailId, setThumbnailId] = useState<string | null>(null)
@@ -68,6 +70,11 @@ export default function NewListingPage() {
 
     if (!formData.title || !formData.description || !formData.exchange_type) {
       setError('Please fill in all required fields.')
+      return
+    }
+
+    if (!formData.termsAccepted) {
+      setError('Please accept the T&C and acknowledgement before posting.')
       return
     }
 
@@ -157,6 +164,7 @@ export default function NewListingPage() {
       exchange_type: formData.exchange_type,
       contact_info: formData.contact_info || null,
       anonymous: formData.anonymous,
+      terms_acknowledged: formData.termsAccepted,
       image_ids: uploaded.map((img) => img.id),
       image_urls: uploaded.map((img) => img.url),
       thumbnail_id: thumbnailEntry.id,
@@ -243,7 +251,27 @@ export default function NewListingPage() {
             <input type="checkbox" name="anonymous" className="mr-2" onChange={handleChange} />
             Post anonymously
           </label>
-          <br/>
+
+          <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                name="termsAccepted"
+                checked={formData.termsAccepted}
+                onChange={handleChange}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                required
+              />
+              <span>
+                I accept the{' '}
+                <a href="/terms" className="text-green-600 hover:underline">
+                  T&amp;C
+                </a>{' '}
+                and acknowledge that this food is given in good faith, is safe, and any necessary handling/expiry info
+                is given to the other party.
+              </span>
+            </label>
+          </div>
 
           <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Create Listing</button>
         </form>
