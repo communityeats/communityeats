@@ -304,13 +304,18 @@ export default function ListingDetailClient({ id }: { id: string }) {
                 )}
               </>
             ) : (
-              <button
-                onClick={claimListing}
-                disabled={claiming}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
-              >
-                {claiming ? 'Registering Interest...' : 'Register Interest'}
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={claimListing}
+                  disabled={claiming}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+                >
+                  {claiming ? 'Registering Interest...' : 'Register Interest'}
+                </button>
+                <p className="text-xs text-gray-600">
+                  By registering interest you acknowledge all food is offered in good faith and you accept responsibility for your own safety.
+                </p>
+              </div>
             )}
           </aside>
         </div>
