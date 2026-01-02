@@ -70,6 +70,37 @@ type LocationSource = {
 const normalizeLocationPart = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value.trim() : ''
 
+const formatLocationPartForDisplay = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  // Keep short region codes uppercased (e.g., NSW) while title-casing longer names.
+  if (trimmed.length <= 3 && /^[a-zA-Z]+$/.test(trimmed)) {
+    return trimmed.toUpperCase()
+  }
+
+  return trimmed
+    .toLowerCase()
+    .split(/([\s-]+)/)
+    .map((segment) =>
+      /[\s-]+/.test(segment)
+        ? segment
+        : segment.charAt(0).toUpperCase() + segment.slice(1)
+    )
+    .join('')
+}
+
+export const formatLocationPartsForDisplay = (
+  parts: Array<string | null | undefined>
+): string | null => {
+  const formatted = parts
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter((part) => part.length > 0)
+    .map(formatLocationPartForDisplay)
+
+  return formatted.length ? formatted.join(', ') : null
+}
+
 export const toPublicLocation = (source: LocationSource): Pick<ListingLocation, 'country' | 'state' | 'suburb'> => {
   const loc = source.location ?? {}
   return {
@@ -82,10 +113,7 @@ export const toPublicLocation = (source: LocationSource): Pick<ListingLocation, 
 export const formatPublicLocationLabel = (
   location: Pick<ListingLocation, 'country' | 'state' | 'suburb'>
 ): string | null => {
-  const parts = [location.suburb, location.state, location.country].filter(
-    (part): part is string => typeof part === 'string' && part.trim().length > 0
-  )
-  return parts.length ? parts.join(', ') : null
+  return formatLocationPartsForDisplay([location.suburb, location.state, location.country])
 }
 
 export function isListingStatus(value: unknown): value is ListingStatus {

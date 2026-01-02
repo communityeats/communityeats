@@ -16,14 +16,14 @@ function NavLink({ href, label, icon }: NavItem) {
   return (
     <Link
       href={href}
-      className={`flex-1 sm:flex-none flex items-center justify-center gap-2 md:px-4 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
+      className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 md:px-4 px-2 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors duration-200 border ${
         active
-          ? "text-green-800 bg-green-100"
-          : "text-gray-700 hover:text-green-800 hover:bg-green-50"
+          ? "text-green-800 bg-green-50 border-green-100 shadow-sm"
+          : "text-gray-700 bg-white border-transparent hover:text-green-800 hover:bg-green-50"
       }`}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
+      <span>{label}</span>
     </Link>
   );
 }
@@ -41,12 +41,20 @@ export default function Navbar() {
   }, []);
 
   return (
-    <header className="border-b bg-white shadow-sm sticky top-0 z-50">
-      <nav className="w-full flex flex-col sm:flex-row items-center sm:justify-between px-0 sm:px-8 py-3 space-y-2 sm:space-y-0">
-        <Link href="/" className="hidden sm:block text-xl font-bold text-green-700">
-          CommunityEats
-        </Link>
-        <div className="w-full sm:w-auto flex justify-evenly sm:justify-start gap-2 px-4 sm:px-0 mt-2 sm:mt-0">
+    <header className="border-b bg-white/95 shadow-sm sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between py-3">
+          <Link href="/" className="text-lg sm:text-xl font-bold text-green-700">
+            CommunityEats
+          </Link>
+          <Link
+            href="/listings/new"
+            className="sm:hidden inline-flex items-center rounded-full bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:bg-green-700"
+          >
+            + New listing
+          </Link>
+        </div>
+        <nav className="flex flex-wrap items-stretch gap-2 pb-3 sm:items-center sm:gap-3 sm:pb-4">
           <NavLink href="/" label="Home" icon={<HomeIcon />} />
           <NavLink href="/listings" label="Listings" icon={<PinIcon />} />
           {user ? (
@@ -57,8 +65,8 @@ export default function Navbar() {
           ) : (
             <NavLink href="/login" label="Login" icon={<LoginIcon />} />
           )}
-        </div>
-      </nav>
+        </nav>
+      </div>
     </header>
   );
 }

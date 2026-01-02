@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import ListingCard from '@/components/ListingCard'
+import { formatLocationPartsForDisplay } from '@/lib/types/listing'
 
 type Listing = {
   id: string
   title: string
   thumbnail_url?: string | null
   created_at?: string
+  location_label?: string | null
   location?: {
     suburb?: string | null
     state?: string | null
@@ -22,6 +24,21 @@ type SortOption = 'recent' | 'nearest'
 type Coordinates = { latitude: number; longitude: number }
 
 type ListingWithDistance = Listing & { distanceKm?: number | null }
+
+const formatLocationLabel = (
+  location?: Listing['location'],
+  label?: string | null
+): string | null => {
+  if (typeof label === 'string' && label.trim()) {
+    return formatLocationPartsForDisplay(label.split(','))
+  }
+
+  return formatLocationPartsForDisplay([
+    location?.suburb ?? '',
+    location?.state ?? '',
+    location?.country ?? '',
+  ])
+}
 
 const GEOLOCATION_PERMISSION_DENIED = 1
 
@@ -251,6 +268,8 @@ export default function ListingsPage() {
                 listing={{
                   ...listing,
                   imageURL: listing.thumbnail_url || '/placeholder.png',
+                  locationText: formatLocationLabel(listing.location, listing.location_label),
+                  createdAt: listing.created_at ?? null,
                 }}
               />
             ))}

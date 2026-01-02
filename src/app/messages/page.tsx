@@ -306,7 +306,10 @@ function MessagesPageContent() {
     if (!paramId) return
     setSelectedConversationId((prev) => (prev === paramId ? prev : paramId))
     setClaimNotice(null)
-  }, [searchParams])
+    if (isMobile) {
+      setMobileView('thread')
+    }
+  }, [isMobile, searchParams])
 
   useEffect(() => {
     const selected = conversations.find((c) => c.id === selectedConversationId)
@@ -482,12 +485,6 @@ function MessagesPageContent() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard"
-            className="text-sm text-gray-600 underline hover:text-gray-800"
-          >
-            Back to dashboard
-          </Link>
           <button
             type="button"
             onClick={() => idToken && fetchConversations(idToken)}
