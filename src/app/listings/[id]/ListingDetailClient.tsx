@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   onAuthStateChanged
@@ -48,6 +48,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [templateMessage, setTemplateMessage] = useState('')
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [sendingTemplate, setSendingTemplate] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -62,6 +64,14 @@ export default function ListingDetailClient({ id }: { id: string }) {
       }
     })
     return () => unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -215,6 +225,39 @@ export default function ListingDetailClient({ id }: { id: string }) {
     setTemplateError(null)
   }
 
+  const showCopiedFeedback = () => {
+    setCopiedLink(true)
+    if (copyResetRef.current) {
+      clearTimeout(copyResetRef.current)
+    }
+    copyResetRef.current = setTimeout(() => setCopiedLink(false), 1500)
+  }
+
+  const handleShare = async () => {
+    const shareUrl =
+      typeof window === 'undefined'
+        ? `/listings/${id}`
+        : new URL(`/listings/${id}`, window.location.origin).toString()
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: listing?.title || 'CommunityEats listing', url: shareUrl })
+        return
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl)
+        showCopiedFeedback()
+        return
+      }
+
+      window.prompt('Copy this link', shareUrl)
+      showCopiedFeedback()
+    } catch {
+      setCopiedLink(false)
+    }
+  }
+
   if (loading) return <div className="flex-grow flex items-center justify-center">Loading...</div>
   if (error) return <div className="flex-grow flex items-center justify-center text-red-600">Error: {error}</div>
   if (!listing) return <div className="flex-grow flex items-center justify-center">Listing not found.</div>
@@ -314,7 +357,18 @@ export default function ListingDetailClient({ id }: { id: string }) {
       {/* Hero Section */}
       <div className="w-full bg-gray-100 border-b py-10 sm:py-12">
         <div className="max-w-5xl mx-auto px-4 space-y-3">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight">{title}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight">{title}</h1>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="shrink-0 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              aria-label="Share listing link"
+            >
+              <ShareIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>{copiedLink ? 'Copied' : 'Share'}</span>
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2 text-xs sm:text-sm text-gray-700">
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold ${
@@ -517,5 +571,25 @@ export default function ListingDetailClient({ id }: { id: string }) {
         </div>
       ) : null}
     </div>
+  )
+}
+
+function ShareIcon(props: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className ?? 'w-4 h-4'}
+    >
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.7 10.7 6.6-3.4M15.3 16.7l-6.6-3.4" />
+    </svg>
   )
 }
