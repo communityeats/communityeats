@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import ListingCard from '@/components/ListingCard'
+import { formatLocationPartsForDisplay } from '@/lib/types/listing'
 
 type Listing = {
   id: string
   title: string
   thumbnail_url?: string | null
   created_at?: string
+  location_label?: string | null
   location?: {
     suburb?: string | null
     state?: string | null
@@ -22,6 +24,21 @@ type SortOption = 'recent' | 'nearest'
 type Coordinates = { latitude: number; longitude: number }
 
 type ListingWithDistance = Listing & { distanceKm?: number | null }
+
+const formatLocationLabel = (
+  location?: Listing['location'],
+  label?: string | null
+): string | null => {
+  if (typeof label === 'string' && label.trim()) {
+    return formatLocationPartsForDisplay(label.split(','))
+  }
+
+  return formatLocationPartsForDisplay([
+    location?.suburb ?? '',
+    location?.state ?? '',
+    location?.country ?? '',
+  ])
+}
 
 const GEOLOCATION_PERMISSION_DENIED = 1
 
@@ -200,7 +217,7 @@ export default function ListingsPage() {
           </label>
           <Link
             href="/listings/new"
-            className="inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="hidden sm:inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
           >
             + New Listing
           </Link>
@@ -251,6 +268,8 @@ export default function ListingsPage() {
                 listing={{
                   ...listing,
                   imageURL: listing.thumbnail_url || '/placeholder.png',
+                  locationText: formatLocationLabel(listing.location, listing.location_label),
+                  createdAt: listing.created_at ?? null,
                 }}
               />
             ))}

@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import Link from 'next/link'
 import ListingCarousel, { type CarouselListing } from '@/components/ListingCarousel'
+import { formatLocationPartsForDisplay } from '@/lib/types/listing'
 
 // Keep the home page dynamic so the carousel shows fresh listings.
 export const revalidate = 0
@@ -28,6 +29,9 @@ const steps = [
 
 async function getRecentListings(): Promise<CarouselListing[]> {
   try {
+    const normalizeLocationLabel = (value: unknown) =>
+      typeof value === 'string' ? formatLocationPartsForDisplay(value.split(',')) : null
+
     const buildBaseUrl = async () => {
       const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim()
       if (envUrl) return envUrl.replace(/\/$/, '')
@@ -72,11 +76,8 @@ async function getRecentListings(): Promise<CarouselListing[]> {
           description: typeof item.description === 'string' ? item.description : null,
           created_at: typeof item.created_at === 'string' ? item.created_at : null,
           location_label:
-            typeof nestedLabel === 'string'
-              ? nestedLabel
-              : typeof item.location_label === 'string'
-                ? item.location_label
-                : null,
+            normalizeLocationLabel(nestedLabel) ??
+            normalizeLocationLabel(item.location_label),
         }
       })
       .filter((item) => item.id)
