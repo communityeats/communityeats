@@ -24,11 +24,6 @@ export function initAdmin() {
           JSON.stringify({ projectId, clientEmail, hasPrivateKey: !!privateKey })
       );
     }
-
-    console.log('[initAdmin] Initializing Firebase Admin SDK with projectId:', projectId);
-    console.log('[initAdmin] Using clientEmail:', clientEmail);
-    console.log('[initAdmin] Private key length:', privateKey.length);
-
     initializeApp({
       credential: cert({ projectId, clientEmail, privateKey }),
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
