@@ -387,11 +387,11 @@ export default function MessageThread({ conversationId, onActivity }: MessageThr
           placeholder="Say something nice!"
           disabled={sending}
         />
-        <div className="flex justify-end">
+        <div className="flex sm:justify-end">
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="px-4 py-1.5 rounded bg-green-600 text-white text-sm disabled:opacity-60"
+            className="w-full sm:w-auto px-4 py-1.5 rounded bg-green-600 text-white text-sm disabled:opacity-60"
           >
             {sending ? 'Sending…' : 'Send'}
           </button>
