@@ -29,6 +29,17 @@ const formatDate = (iso?: string | null) => {
   return date.toLocaleDateString()
 }
 
+const slugifyTitle = (title?: string | null) => {
+  if (!title) return 'listing'
+  const slug = title
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
+  return slug || 'listing'
+}
+
 export default function ListingCard({ listing }: { listing: Listing }) {
   const [copied, setCopied] = useState(false)
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -36,6 +47,7 @@ export default function ListingCard({ listing }: { listing: Listing }) {
     typeof listing.distanceKm === 'number' ? formatDistance(listing.distanceKm) : null
   const dateLabel = formatDate(listing.createdAt)
   const listingHref = `/listings/${listing.id}`
+  const sharePath = `/l/${listing.id}/${slugifyTitle(listing.title)}`
 
   useEffect(() => {
     return () => {
@@ -59,8 +71,8 @@ export default function ListingCard({ listing }: { listing: Listing }) {
 
     const shareUrl =
       typeof window === 'undefined'
-        ? listingHref
-        : new URL(listingHref, window.location.origin).toString()
+        ? sharePath
+        : new URL(sharePath, window.location.origin).toString()
 
     try {
       if (navigator.share) {
