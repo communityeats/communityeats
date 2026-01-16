@@ -154,6 +154,7 @@ export async function GET(req: Request) {
 
         return {
           id: d.id,
+          public_slug: typeof data?.public_slug === 'string' ? data.public_slug : d.id,
           title: typeof data?.title === 'string' ? data.title : '',
           description: typeof data?.description === 'string' ? data.description : '',
           category: typeof data?.category === 'string' ? data.category : '',

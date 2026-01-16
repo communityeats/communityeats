@@ -7,6 +7,11 @@ import {
   thumbnailInImageIds,
   isExchangeType,
 } from '@/lib/types/listing'
+import {
+  buildListingSlug,
+  ensureUniqueListingSlug,
+  normalizeUsername,
+} from '@/lib/listingSlug'
 import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
@@ -85,15 +90,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid location' }, { status: 400 })
     }
 
-    const firestore = getFirestore()
-
     const docId = uuidv4()
+
+    const firestore = getFirestore()
+    const userSnap = await firestore.collection('users').doc(userId).get()
+    const userData = userSnap.data() ?? {}
+    const ownerUsername =
+      normalizeUsername(userData.username) ?? normalizeUsername(userData.name)
+
+    if (!ownerUsername) {
+      return NextResponse.json(
+        { error: 'Missing username for listing owner.' },
+        { status: 400 }
+      )
+    }
+
+    const baseSlug = buildListingSlug(ownerUsername, data.title)
+    const publicSlug = await ensureUniqueListingSlug(firestore, baseSlug)
 
     const listingDoc = {
       id: docId,
       user_id: userId,
       title: data.title.trim().toLowerCase(),
       description: data.description.trim().toLowerCase(),
+      public_slug: publicSlug,
       location,
       country: location.country,
       state: location.state,

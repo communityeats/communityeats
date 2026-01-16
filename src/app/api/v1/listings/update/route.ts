@@ -9,6 +9,11 @@ import {
   normalizeListingLocation,
   type ListingLocationInput,
 } from '@/lib/types/listing'
+import {
+  buildListingSlug,
+  ensureUniqueListingSlug,
+  normalizeUsername,
+} from '@/lib/listingSlug'
 
 initAdmin()
 
@@ -67,12 +72,16 @@ export async function POST(req: Request) {
     // Firestore update() accepts dot-notation. Use a free-form record for that.
     const updatePaths: Record<string, unknown> = {}
     const errors: string[] = []
+    let nextTitle: string | null = null
 
     const maybeSetString = (key: string, val?: unknown, toLower = true) => {
       if (typeof val === 'string') {
         const trimmed = val.trim()
         if (trimmed) {
           updatePaths[key] = toLower ? trimmed.toLowerCase() : trimmed
+          if (key === 'title') {
+            nextTitle = toLower ? trimmed.toLowerCase() : trimmed
+          }
         }
       }
     }
@@ -181,6 +190,26 @@ export async function POST(req: Request) {
 
     if (errors.length) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 })
+    }
+
+    if (nextTitle) {
+      const userSnap = await firestore.collection('users').doc(userId).get()
+      const userData = userSnap.data() ?? {}
+      const ownerUsername =
+        normalizeUsername(userData.username) ?? normalizeUsername(userData.name)
+
+      if (!ownerUsername) {
+        return NextResponse.json(
+          { error: 'Missing username for listing owner.' },
+          { status: 400 }
+        )
+      }
+
+      const baseSlug = buildListingSlug(ownerUsername, nextTitle)
+      const uniqueSlug = await ensureUniqueListingSlug(firestore, baseSlug, id)
+      if (uniqueSlug !== existing.public_slug) {
+        updatePaths['public_slug'] = uniqueSlug
+      }
     }
 
     // Always bump updated_at

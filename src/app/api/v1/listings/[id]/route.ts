@@ -36,9 +36,17 @@ export async function GET(
     }
 
     const firestore = getFirestore()
-    const docSnap = await firestore.collection('listings').doc(id).get()
+    let docSnap = await firestore.collection('listings').doc(id).get()
     if (!docSnap.exists) {
-      return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+      const slugSnap = await firestore
+        .collection('listings')
+        .where('public_slug', '==', id)
+        .limit(1)
+        .get()
+      if (slugSnap.empty) {
+        return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+      }
+      docSnap = slugSnap.docs[0]
     }
 
     const data = docSnap.data() as ListingDoc
@@ -89,8 +97,15 @@ export async function GET(
     void interested_users_uids
     void user_id
 
+    const public_slug =
+      typeof data.public_slug === 'string' && data.public_slug.trim()
+        ? data.public_slug
+        : docSnap.id
+
     return NextResponse.json({
       ...rest,
+      id: docSnap.id,
+      public_slug,
       country: publicLocation.country,
       state: publicLocation.state,
       suburb: publicLocation.suburb,

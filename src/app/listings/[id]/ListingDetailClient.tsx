@@ -21,6 +21,7 @@ type Listing = {
   description: string
   image_urls: string[]
   interested_user_count: number
+  public_slug?: string | null
   category?: string
   exchange_type?: ExchangeType
   location?: Partial<ListingLocation>
@@ -31,7 +32,7 @@ type Listing = {
   user_id?: string
 }
 
-export default function ListingDetailClient({ id }: { id: string }) {
+export default function ListingDetailClient({ slug }: { slug: string }) {
   const [listing, setListing] = useState<Listing | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [copiedLink, setCopiedLink] = useState(false)
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const router = useRouter()
+  const listingSlug = listing?.public_slug ?? slug
+  const listingId = listing?.id ?? slug
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -75,9 +78,16 @@ export default function ListingDetailClient({ id }: { id: string }) {
   }, [])
 
   useEffect(() => {
+    if (!listing?.public_slug) return
+    if (listing.public_slug !== slug) {
+      router.replace(`/listings/${listing.public_slug}`)
+    }
+  }, [listing?.public_slug, router, slug])
+
+  useEffect(() => {
     const fetchListing = async () => {
       try {
-        const res = await fetch(`/api/v1/listings/${id}`,
+        const res = await fetch(`/api/v1/listings/${slug}`,
           {
             headers: {
               Authorization: userToken ? `Bearer ${userToken}` : '',
@@ -99,13 +109,13 @@ export default function ListingDetailClient({ id }: { id: string }) {
       }
     }
     fetchListing()
-  }, [id, userToken])
+  }, [slug, userToken])
 
   const claimListing = async () => {
     setError(null)
 
     if (!userToken) {
-      router.push(`/login?redirect=/listings/${id}`)
+      router.push(`/login?redirect=/listings/${listingSlug}`)
       return
     }
 
@@ -117,7 +127,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
     setClaiming(true)
 
     try {
-      const res = await fetch(`/api/v1/listings/${id}/claim`, {
+      const res = await fetch(`/api/v1/listings/${listingId}/claim`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${userToken}`,
@@ -146,7 +156,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
   const handleMessageOwnerClick = async () => {
     if (!userToken) {
-      router.push(`/login?redirect=/listings/${id}`)
+      router.push(`/login?redirect=/listings/${listingSlug}`)
       return
     }
 
@@ -160,7 +170,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
     setOpeningConversation(true)
 
     try {
-      const conversation = await ensureConversation({ token: userToken, listingId: id })
+      const conversation = await ensureConversation({ token: userToken, listingId })
       if (conversation.last_message_at || conversation.last_message_preview) {
         setConversationId(conversation.id)
         router.push(`/messages?conversation=${conversation.id}`, { scroll: false })
@@ -236,8 +246,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const handleShare = async () => {
     const shareUrl =
       typeof window === 'undefined'
-        ? `/listings/${id}`
-        : new URL(`/listings/${id}`, window.location.origin).toString()
+        ? `/listings/${listingSlug}`
+        : new URL(`/listings/${listingSlug}`, window.location.origin).toString()
 
     try {
       if (navigator.share) {
@@ -306,7 +316,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
       return (
         <button
           type="button"
-          onClick={() => router.push(`/dashboard/listings/${id}`)}
+          onClick={() => router.push(`/dashboard/listings/${listingId}`)}
           className={`${sizing} bg-indigo-600 hover:bg-indigo-700 text-white transition disabled:opacity-60 w-full`}
         >
           Manage Listing
