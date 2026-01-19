@@ -12,7 +12,6 @@ import {
 import {
   buildListingSlug,
   ensureUniqueListingSlug,
-  normalizeUsername,
 } from '@/lib/listingSlug'
 
 initAdmin()
@@ -193,19 +192,13 @@ export async function POST(req: Request) {
     }
 
     if (nextTitle) {
-      const userSnap = await firestore.collection('users').doc(userId).get()
-      const userData = userSnap.data() ?? {}
-      const ownerUsername =
-        normalizeUsername(userData.username) ?? normalizeUsername(userData.name)
-
-      if (!ownerUsername) {
-        return NextResponse.json(
-          { error: 'Missing username for listing owner.' },
-          { status: 400 }
-        )
-      }
-
-      const baseSlug = buildListingSlug(ownerUsername, nextTitle)
+      const dateSeed =
+        typeof existing.created_at === 'string' && existing.created_at.trim()
+          ? existing.created_at
+          : typeof existing.updated_at === 'string' && existing.updated_at.trim()
+            ? existing.updated_at
+            : new Date()
+      const baseSlug = buildListingSlug(nextTitle, dateSeed)
       const uniqueSlug = await ensureUniqueListingSlug(firestore, baseSlug, id)
       if (uniqueSlug !== existing.public_slug) {
         updatePaths['public_slug'] = uniqueSlug

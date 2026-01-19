@@ -1,20 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore'
 
-export const normalizeUsername = (value: unknown): string | null => {
-  if (typeof value !== 'string') return null
-
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/(^-|-$)+/g, '')
-
-  if (normalized.length < 3 || normalized.length > 30) return null
-  return normalized
-}
-
 export const slugifyTitle = (value: string): string => {
   const slug = value
     .toLowerCase()
@@ -26,8 +11,25 @@ export const slugifyTitle = (value: string): string => {
   return slug || 'listing'
 }
 
-export const buildListingSlug = (username: string, title: string): string => {
-  return `${username}-${slugifyTitle(title)}`
+const formatListingDateSlug = (value: Date | string | number): string | null => {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+export const buildListingSlug = (
+  title: string,
+  createdAt: Date | string | number
+): string => {
+  const dateSlug = formatListingDateSlug(createdAt)
+  const titleSlug = slugifyTitle(title)
+
+  return dateSlug ? `${titleSlug}-${dateSlug}` : titleSlug
 }
 
 export const ensureUniqueListingSlug = async (

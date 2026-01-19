@@ -8,7 +8,6 @@ import { auth } from "@/lib/firebase/client";
 export default function RegisterForm({ redirect }: { redirect: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +33,6 @@ export default function RegisterForm({ redirect }: { redirect: string }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           name,
-          username,
           email,
           acceptedTerms,
           acceptedPrivacy,
@@ -81,23 +79,6 @@ export default function RegisterForm({ redirect }: { redirect: string }) {
                 className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-green-500 focus:border-green-500"
                 placeholder="Jane Doe"
               />
-            </div>
-
-            <div>
-              <label htmlFor="username" className="block font-medium text-gray-700">
-                Username
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-                className="mt-1 w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="jane-doe"
-              />
-              <p className="mt-1 text-xs text-gray-500">Use letters, numbers, or hyphens.</p>
             </div>
 
             <div>

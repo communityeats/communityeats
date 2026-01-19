@@ -10,7 +10,6 @@ import {
 import {
   buildListingSlug,
   ensureUniqueListingSlug,
-  normalizeUsername,
 } from '@/lib/listingSlug'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -93,19 +92,8 @@ export async function POST(req: Request) {
     const docId = uuidv4()
 
     const firestore = getFirestore()
-    const userSnap = await firestore.collection('users').doc(userId).get()
-    const userData = userSnap.data() ?? {}
-    const ownerUsername =
-      normalizeUsername(userData.username) ?? normalizeUsername(userData.name)
-
-    if (!ownerUsername) {
-      return NextResponse.json(
-        { error: 'Missing username for listing owner.' },
-        { status: 400 }
-      )
-    }
-
-    const baseSlug = buildListingSlug(ownerUsername, data.title)
+    const createdAt = new Date()
+    const baseSlug = buildListingSlug(data.title, createdAt)
     const publicSlug = await ensureUniqueListingSlug(firestore, baseSlug)
 
     const listingDoc = {
@@ -130,8 +118,8 @@ export async function POST(req: Request) {
       terms_acknowledged: true,
       interested_users_uids: [],
       status: 'available',
-      updated_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
+      updated_at: createdAt.toISOString(),
+      created_at: createdAt.toISOString(),
     }
 
    const docRef = firestore.collection('listings').doc(docId);
