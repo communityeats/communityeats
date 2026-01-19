@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 type Listing = {
   id: string
   title: string
+  public_slug?: string | null
   imageURL?: string
   distanceKm?: number | null
   locationText?: string | null
@@ -29,25 +30,15 @@ const formatDate = (iso?: string | null) => {
   return date.toLocaleDateString()
 }
 
-const slugifyTitle = (title?: string | null) => {
-  if (!title) return 'listing'
-  const slug = title
-    .toLowerCase()
-    .trim()
-    .replace(/['"]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '')
-  return slug || 'listing'
-}
-
 export default function ListingCard({ listing }: { listing: Listing }) {
   const [copied, setCopied] = useState(false)
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const distanceLabel =
     typeof listing.distanceKm === 'number' ? formatDistance(listing.distanceKm) : null
   const dateLabel = formatDate(listing.createdAt)
-  const listingHref = `/listings/${listing.id}`
-  const sharePath = `/l/${listing.id}/${slugifyTitle(listing.title)}`
+  const listingSlug = listing.public_slug || listing.id
+  const listingHref = `/listings/${listingSlug}`
+  const sharePath = listingHref
 
   useEffect(() => {
     return () => {

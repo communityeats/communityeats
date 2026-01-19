@@ -104,6 +104,7 @@ function MessagesPageContent() {
   const [claimIsError, setClaimIsError] = useState(false)
   const [loadingStatuses, setLoadingStatuses] = useState(false)
   const [listingStatusMap, setListingStatusMap] = useState<Record<string, ListingStatus | null>>({})
+  const [listingSlugMap, setListingSlugMap] = useState<Record<string, string>>({})
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active')
   const [visibleCounts, setVisibleCounts] = useState<{ active: number; archived: number }>({
     active: 5,
@@ -208,34 +209,48 @@ function MessagesPageContent() {
 
       setLoadingStatuses(true)
       try {
-        const entries: Array<[string, ListingStatus | null]> = await Promise.all(
-          uniqueIds.map(async (listingId): Promise<[string, ListingStatus | null]> => {
+        const entries: Array<[string, ListingStatus | null, string | null]> = await Promise.all(
+          uniqueIds.map(async (listingId): Promise<[string, ListingStatus | null, string | null]> => {
             try {
               const res = await fetch(`/api/v1/listings/${listingId}`, {
                 headers: { Authorization: `Bearer ${token}` },
                 cache: 'no-store',
               })
               if (res.status === 404) {
-                return [listingId, 'removed' as ListingStatus]
+                return [listingId, 'removed' as ListingStatus, null]
               }
-              const payload = (await res.json().catch(() => ({}))) as { status?: unknown }
+              const payload = (await res.json().catch(() => ({}))) as {
+                status?: unknown
+                public_slug?: unknown
+              }
               const isListingStatus = (value: unknown): value is ListingStatus =>
                 value === 'available' || value === 'claimed' || value === 'removed'
               const status: ListingStatus | null = isListingStatus(payload.status)
                 ? payload.status
                 : null
-              return [listingId, status] as const
+              const publicSlug =
+                typeof payload.public_slug === 'string' && payload.public_slug.trim()
+                  ? payload.public_slug
+                  : null
+              return [listingId, status, publicSlug] as const
             } catch {
-              return [listingId, null] as const
+              return [listingId, null, null] as const
             }
           })
         )
         const statusMap: Record<string, ListingStatus | null> = {}
-        for (const [id, status] of entries) {
+        const slugMap: Record<string, string> = {}
+        for (const [id, status, publicSlug] of entries) {
           statusMap[id] = status
+          if (publicSlug) {
+            slugMap[id] = publicSlug
+          }
         }
         const idSet = new Set(uniqueIds)
         setListingStatusMap((prev) => ({ ...prev, ...statusMap }))
+        if (Object.keys(slugMap).length) {
+          setListingSlugMap((prev) => ({ ...prev, ...slugMap }))
+        }
         setConversations((prev) =>
           prev.map((conversation) =>
             idSet.has(conversation.listing_id)
@@ -255,6 +270,7 @@ function MessagesPageContent() {
     setLoading(true)
     setError(null)
     setListingStatusMap({})
+    setListingSlugMap({})
     setVisibleCounts({ active: 5, archived: 5 })
     try {
       const list = await listConversations(token, 50)
@@ -633,7 +649,7 @@ function MessagesPageContent() {
                         </button>
                       ) : null}
                       <Link
-                        href={`/listings/${selectedConversation.listing_id}`}
+                        href={`/listings/${listingSlugMap[selectedConversation.listing_id] ?? selectedConversation.listing_id}`}
                         className="text-xs text-indigo-600 hover:text-indigo-700"
                       >
                         View listing

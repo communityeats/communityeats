@@ -100,10 +100,15 @@ export async function GET(req: NextRequest) {
           postcode: _deprecatedPostcode,
           ...rest
         } = data
+        const public_slug =
+          typeof (data as { public_slug?: unknown }).public_slug === 'string'
+            ? (data as { public_slug?: string }).public_slug
+            : doc.id
 
         return {
           id: doc.id,
           ...rest,
+          public_slug,
           country: publicLocation.country,
           state: publicLocation.state,
           suburb: publicLocation.suburb,

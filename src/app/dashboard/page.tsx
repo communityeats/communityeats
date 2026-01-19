@@ -389,6 +389,7 @@ export default function Dashboard() {
 const renderListingCardOwned = (l: ListingUserResponse, keyPrefix: string) => {
   const firstImageId = Array.isArray(l.image_urls) && l.image_urls[0] ? l.image_urls[0] : null;
   const img = firstImageId;
+  const listingSlug = l.public_slug || l.id;
 
   const interestedCount = Array.isArray(l.interested_users_uids)
     ? l.interested_users_uids.length
@@ -424,7 +425,7 @@ const renderListingCardOwned = (l: ListingUserResponse, keyPrefix: string) => {
       </div>
       <div className="p-3 pt-0 border-t bg-gray-50 flex flex-col sm:flex-row sm:flex-wrap gap-2">
         <Link
-          href={`/listings/${l.id}`}
+          href={`/listings/${listingSlug}`}
           aria-label="View listing"
           title="View listing"
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors text-center"
@@ -464,6 +465,7 @@ const renderListingCardOwned = (l: ListingUserResponse, keyPrefix: string) => {
 const renderListingCardSubscribed = (l: ListingUserResponse, keyPrefix: string) => {
   const firstImageId = Array.isArray(l.image_urls) && l.image_urls[0] ? l.image_urls[0] : null;
   const img = firstImageId;
+  const listingSlug = l.public_slug || l.id;
 
   const rawCount = l.interested_user_count;
   const hasSelf = !!userUid && Array.isArray(l.interested_users_uids)
@@ -492,7 +494,7 @@ const renderListingCardSubscribed = (l: ListingUserResponse, keyPrefix: string) 
       </div>
       <div className="p-3 pt-0 border-t bg-gray-50 flex flex-col sm:flex-row sm:flex-wrap gap-2">
         <Link
-          href={`/listings/${l.id}`}
+          href={`/listings/${listingSlug}`}
           aria-label="View listing"
           title="View listing"
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 transition-colors text-center"

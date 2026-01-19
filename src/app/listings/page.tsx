@@ -10,6 +10,7 @@ type Listing = {
   title: string
   thumbnail_url?: string | null
   created_at?: string
+  public_slug?: string | null
   location_label?: string | null
   location?: {
     suburb?: string | null

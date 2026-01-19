@@ -76,12 +76,15 @@ export async function GET(req: NextRequest) {
         ).filter(Boolean) as string[]
 
         const privatizedData = data as ListingDoc
+        const public_slug =
+          typeof data.public_slug === 'string' ? data.public_slug : doc.id
 
         // Remove sensitive fields before sending to client
         const { interested_users_uids: _unused1, user_id: _unused2, ...publicData } = privatizedData;
 
         return {
           ...publicData,
+          public_slug,
           image_urls,
           interested_user_count: interestedUserIds.length,
           has_registered_interest: interestedUserIds.includes(uid),

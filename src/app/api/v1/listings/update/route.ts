@@ -9,6 +9,10 @@ import {
   normalizeListingLocation,
   type ListingLocationInput,
 } from '@/lib/types/listing'
+import {
+  buildListingSlug,
+  ensureUniqueListingSlug,
+} from '@/lib/listingSlug'
 
 initAdmin()
 
@@ -67,12 +71,16 @@ export async function POST(req: Request) {
     // Firestore update() accepts dot-notation. Use a free-form record for that.
     const updatePaths: Record<string, unknown> = {}
     const errors: string[] = []
+    let nextTitle: string | null = null
 
     const maybeSetString = (key: string, val?: unknown, toLower = true) => {
       if (typeof val === 'string') {
         const trimmed = val.trim()
         if (trimmed) {
           updatePaths[key] = toLower ? trimmed.toLowerCase() : trimmed
+          if (key === 'title') {
+            nextTitle = toLower ? trimmed.toLowerCase() : trimmed
+          }
         }
       }
     }
@@ -181,6 +189,20 @@ export async function POST(req: Request) {
 
     if (errors.length) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 })
+    }
+
+    if (nextTitle) {
+      const dateSeed =
+        typeof existing.created_at === 'string' && existing.created_at.trim()
+          ? existing.created_at
+          : typeof existing.updated_at === 'string' && existing.updated_at.trim()
+            ? existing.updated_at
+            : new Date()
+      const baseSlug = buildListingSlug(nextTitle, dateSeed)
+      const uniqueSlug = await ensureUniqueListingSlug(firestore, baseSlug, id)
+      if (uniqueSlug !== existing.public_slug) {
+        updatePaths['public_slug'] = uniqueSlug
+      }
     }
 
     // Always bump updated_at

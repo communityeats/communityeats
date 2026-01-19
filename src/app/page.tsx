@@ -57,6 +57,7 @@ async function getRecentListings(): Promise<CarouselListing[]> {
       .map((raw) => {
         const item = raw as {
           id?: unknown
+          public_slug?: unknown
           title?: unknown
           thumbnail_url?: unknown
           description?: unknown
@@ -71,6 +72,7 @@ async function getRecentListings(): Promise<CarouselListing[]> {
 
         return {
           id: typeof item.id === 'string' ? item.id : '',
+          public_slug: typeof item.public_slug === 'string' ? item.public_slug : null,
           title: typeof item.title === 'string' ? item.title : null,
           thumbnail_url: typeof item.thumbnail_url === 'string' ? item.thumbnail_url : null,
           description: typeof item.description === 'string' ? item.description : null,

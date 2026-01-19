@@ -10,5 +10,5 @@ type Props = {
 export default async function ListingDetail({ params }: Props) {
   const { id } = await params;
 
-  return <ListingDetailClient id={id} />
+  return <ListingDetailClient slug={id} />
 }

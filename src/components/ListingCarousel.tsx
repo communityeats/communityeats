@@ -5,6 +5,7 @@ import Link from 'next/link'
 
 export type CarouselListing = {
   id: string
+  public_slug?: string | null
   title?: string | null
   thumbnail_url?: string | null
   description?: string | null
@@ -150,7 +151,7 @@ export default function ListingCarousel({ listings }: ListingCarouselProps) {
               </button>
             </div>
             <Link
-              href={`/listings/${current.id}`}
+              href={`/listings/${current.public_slug || current.id}`}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
             >
               View listing

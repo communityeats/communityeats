@@ -33,6 +33,7 @@ export interface ListingDoc {
   image_ids: string[]
   interested_users_uids: string[]
   location: ListingLocation
+  public_slug?: string | null
   status: ListingStatus
   thumbnail_id: string
   title: string

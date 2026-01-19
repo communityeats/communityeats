@@ -7,6 +7,10 @@ import {
   thumbnailInImageIds,
   isExchangeType,
 } from '@/lib/types/listing'
+import {
+  buildListingSlug,
+  ensureUniqueListingSlug,
+} from '@/lib/listingSlug'
 import { v4 as uuidv4 } from 'uuid'
 
 initAdmin() // Ensure initialized once
@@ -85,15 +89,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid location' }, { status: 400 })
     }
 
-    const firestore = getFirestore()
-
     const docId = uuidv4()
+
+    const firestore = getFirestore()
+    const createdAt = new Date()
+    const baseSlug = buildListingSlug(data.title, createdAt)
+    const publicSlug = await ensureUniqueListingSlug(firestore, baseSlug)
 
     const listingDoc = {
       id: docId,
       user_id: userId,
       title: data.title.trim().toLowerCase(),
       description: data.description.trim().toLowerCase(),
+      public_slug: publicSlug,
       location,
       country: location.country,
       state: location.state,
@@ -110,8 +118,8 @@ export async function POST(req: Request) {
       terms_acknowledged: true,
       interested_users_uids: [],
       status: 'available',
-      updated_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
+      updated_at: createdAt.toISOString(),
+      created_at: createdAt.toISOString(),
     }
 
    const docRef = firestore.collection('listings').doc(docId);
