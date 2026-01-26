@@ -302,9 +302,11 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
   const formattedState = formatLocationPartsForDisplay([location?.state])
   const formattedCountry = formatLocationPartsForDisplay([location?.country])
   const interestedLabel =
-    interested_user_count === 1
-      ? '1 person interested'
-      : `${interested_user_count} people interested`
+    interested_user_count > 0
+      ? interested_user_count === 1
+        ? '1 person interested'
+        : `${interested_user_count} people interested`
+      : null
 
   const renderPrimaryAction = (variant: 'full' | 'floating') => {
     const sizing =
@@ -399,9 +401,11 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
                 Posted {postedLabel}
               </span>
             ) : null}
-            <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 bg-white text-gray-700">
-              {interestedLabel}
-            </span>
+            {interestedLabel ? (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 bg-white text-gray-700">
+                {interestedLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -480,9 +484,11 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
             <section className="space-y-3 rounded-xl border p-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-800">Interested</h2>
-                <span className="text-xs font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-3 py-1">
-                  {interested_user_count} {interested_user_count === 1 ? 'person' : 'people'}
-                </span>
+                {interested_user_count > 0 ? (
+                  <span className="text-xs font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-3 py-1">
+                    {interested_user_count} {interested_user_count === 1 ? 'person' : 'people'}
+                  </span>
+                ) : null}
               </div>
               <div className="space-y-2">
                 {renderPrimaryAction('full')}
@@ -528,9 +534,11 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
                     {locationLabel}
                   </span>
                 ) : null}
-                <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5">
-                  {interestedLabel}
-                </span>
+                {interestedLabel ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5">
+                    {interestedLabel}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="w-40 shrink-0">
