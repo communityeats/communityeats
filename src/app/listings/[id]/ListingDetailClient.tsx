@@ -243,15 +243,42 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
     copyResetRef.current = setTimeout(() => setCopiedLink(false), 1500)
   }
 
+  const normalizeLocationLabel = (value?: string | null) =>
+    typeof value === 'string' && value.trim()
+      ? formatLocationPartsForDisplay(value.split(','))
+      : null
+
+  const formatShareDescription = (value?: string | null, limit = 140) => {
+    if (typeof value !== 'string') return null
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    if (!normalized) return null
+    if (normalized.length <= limit) return normalized
+    return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
+  }
+
   const handleShare = async () => {
     const shareUrl =
       typeof window === 'undefined'
         ? `/listings/${listingSlug}`
         : new URL(`/listings/${listingSlug}`, window.location.origin).toString()
+    const shareTitle = listing?.title?.trim() || 'CommunityEats listing'
+    const shareLocation =
+      normalizeLocationLabel(listing?.location_label ?? null) ??
+      normalizeLocationLabel(listing?.location?.label ?? null) ??
+      formatLocationPartsForDisplay([
+        listing?.location?.suburb,
+        listing?.location?.state,
+        listing?.location?.country,
+      ])
+    const shareDescription = formatShareDescription(listing?.description ?? null)
+    const intro = shareLocation
+      ? `Fresh share: ${shareTitle} in ${shareLocation}.`
+      : `Fresh share: ${shareTitle} on CommunityEats.`
+    const shareText = shareDescription ? `${intro} ${shareDescription}` : intro
 
     try {
       if (navigator.share) {
-        await navigator.share({ title: listing?.title || 'CommunityEats listing', url: shareUrl })
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl })
         return
       }
 
@@ -289,11 +316,6 @@ export default function ListingDetailClient({ slug }: { slug: string }) {
   const isOwner = user_id === currentUid
   const isAvailable = !status || status === 'available'
   const postedLabel = created_at ? new Date(created_at).toLocaleDateString() : null
-  const normalizeLocationLabel = (value?: string | null) =>
-    typeof value === 'string' && value.trim()
-      ? formatLocationPartsForDisplay(value.split(','))
-      : null
-
   const locationLabel =
     normalizeLocationLabel(location_label) ??
     normalizeLocationLabel(location?.label ?? null) ??
