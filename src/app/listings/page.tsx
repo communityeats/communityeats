@@ -10,6 +10,7 @@ type Listing = {
   title: string
   thumbnail_url?: string | null
   created_at?: string
+  description?: string | null
   public_slug?: string | null
   location_label?: string | null
   location?: {
@@ -271,6 +272,7 @@ export default function ListingsPage() {
                   imageURL: listing.thumbnail_url || '/placeholder.png',
                   locationText: formatLocationLabel(listing.location, listing.location_label),
                   createdAt: listing.created_at ?? null,
+                  description: listing.description ?? null,
                 }}
               />
             ))}
