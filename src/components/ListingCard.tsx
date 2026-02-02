@@ -11,6 +11,7 @@ type Listing = {
   imageURL?: string
   distanceKm?: number | null
   locationText?: string | null
+  description?: string | null
   createdAt?: string | null
 }
 
@@ -56,6 +57,14 @@ export default function ListingCard({ listing }: { listing: Listing }) {
     copyResetRef.current = setTimeout(() => setCopied(false), 1500)
   }
 
+  const formatShareDescription = (value?: string | null, limit = 140) => {
+    if (typeof value !== 'string') return null
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    if (!normalized) return null
+    if (normalized.length <= limit) return normalized
+    return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
+  }
+
   const handleShareClick = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -64,10 +73,16 @@ export default function ListingCard({ listing }: { listing: Listing }) {
       typeof window === 'undefined'
         ? sharePath
         : new URL(sharePath, window.location.origin).toString()
+    const shareTitle = listing.title || 'CommunityEats listing'
+    const shareDescription = formatShareDescription(listing.description ?? null)
+    const intro = listing.locationText
+      ? `Fresh share: ${shareTitle} in ${listing.locationText}.`
+      : `Fresh share: ${shareTitle} on CommunityEats.`
+    const shareText = shareDescription ? `${intro} ${shareDescription}` : intro
 
     try {
       if (navigator.share) {
-        await navigator.share({ title: listing.title || 'CommunityEats listing', url: shareUrl })
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl })
         return
       }
 
