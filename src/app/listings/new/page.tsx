@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
 import {
@@ -36,6 +36,8 @@ export default function NewListingPage() {
   const [images, setImages] = useState<File[]>([])
   const [thumbnailId, setThumbnailId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const errorRef = useRef<HTMLDivElement | null>(null)
   const [locationSelection, setLocationSelection] = useState<LocationSelection | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
@@ -64,130 +66,145 @@ export default function NewListingPage() {
     }));
   };
 
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [error])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     setError('')
+    setIsSubmitting(true)
 
-    if (!formData.title || !formData.description || !formData.exchange_type) {
-      setError('Please fill in all required fields.')
-      return
-    }
-
-    if (!formData.termsAccepted) {
-      setError('Please accept the T&C and acknowledgement before posting.')
-      return
-    }
-
-    if (!googleMapsApiKey) {
-      setError('Location search requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to be configured.')
-      return
-    }
-
-    if (!locationSelection) {
-      setError('Please choose a location from the search field.')
-      return
-    }
-
-    if (locationError) {
-      setError(locationError)
-      return
-    }
-
-    if (!thumbnailId || !images.some((img) => img.name === thumbnailId)) {
-      setError('Thumbnail must match one of the selected images.')
-      return
-    }
-
-    const user = auth.currentUser
-    if (!user) {
-      setError('You must be signed in to create a listing.')
-      return
-    }
-
-    const token = await user.getIdToken()
-    const uploaded: { id: string; url: string; originalName: string }[] = []
-
-    for (const file of images) {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const res = await fetch('/api/v1/listings/upload-image', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      if (!res.ok) {
-        const result = await res.json()
-        setError(result.error || 'Image upload failed.')
+    try {
+      if (!formData.title || !formData.description || !formData.exchange_type) {
+        setError('Please fill in all required fields.')
         return
       }
 
-      const data = await res.json()
-      uploaded.push({
-        id: data.id,
-        url: data.url,
-        originalName: file.name,
+      if (!formData.termsAccepted) {
+        setError('Please accept the T&C and acknowledgement before posting.')
+        return
+      }
+
+      if (!googleMapsApiKey) {
+        setError('Location search requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to be configured.')
+        return
+      }
+
+      if (!locationSelection) {
+        setError('Please choose a location from the search field.')
+        return
+      }
+
+      if (locationError) {
+        setError(locationError)
+        return
+      }
+
+      if (!thumbnailId || !images.some((img) => img.name === thumbnailId)) {
+        setError('Thumbnail must match one of the selected images.')
+        return
+      }
+
+      const user = auth.currentUser
+      if (!user) {
+        setError('You must be signed in to create a listing.')
+        return
+      }
+
+      const token = await user.getIdToken()
+      const uploaded: { id: string; url: string; originalName: string }[] = []
+
+      for (const file of images) {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const res = await fetch('/api/v1/listings/upload-image', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+
+        if (!res.ok) {
+          const result = await res.json()
+          setError(result.error || 'Image upload failed.')
+          return
+        }
+
+        const data = await res.json()
+        uploaded.push({
+          id: data.id,
+          url: data.url,
+          originalName: file.name,
+        })
+      }
+
+      const thumbnailEntry = uploaded.find((img) => img.originalName === thumbnailId)
+      if (!thumbnailEntry) {
+        setError('Thumbnail image not found among uploads.')
+        return
+      }
+
+      if (!thumbnailInImageIds(
+        uploaded.map((img) => img.id),
+        thumbnailEntry.id
+      )) {
+        setError('Thumbnail must be one of the uploaded image IDs.')
+        return
+      }
+
+      const location = normalizeListingLocation({
+        ...locationSelection.location,
+        latitude: locationSelection.location.latitude ?? undefined,
+        longitude: locationSelection.location.longitude ?? undefined,
       })
-    }
 
-    const thumbnailEntry = uploaded.find((img) => img.originalName === thumbnailId)
-    if (!thumbnailEntry) {
-      setError('Thumbnail image not found among uploads.')
-      return
-    }
+      const payload = {
+        title: formData.title.toLowerCase(),
+        description: formData.description.toLowerCase(),
+        country: location.country,
+        state: location.state,
+        suburb: location.suburb,
+        postcode: location.postcode,
+        category: null,
+        exchange_type: formData.exchange_type,
+        contact_info: formData.contact_info || null,
+        anonymous: formData.anonymous,
+        terms_acknowledged: formData.termsAccepted,
+        image_ids: uploaded.map((img) => img.id),
+        image_urls: uploaded.map((img) => img.url),
+        thumbnail_id: thumbnailEntry.id,
+        location,
+        location_place_id: location.place_id ?? null,
+        location_label: location.label ?? null,
+        user_id: user.uid,
+      }
 
-    if (!thumbnailInImageIds(
-      uploaded.map((img) => img.id),
-      thumbnailEntry.id
-    )) {
-      setError('Thumbnail must be one of the uploaded image IDs.')
-      return
-    }
+      const listingRes = await fetch('/api/v1/listings/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      })
 
-    const location = normalizeListingLocation({
-      ...locationSelection.location,
-      latitude: locationSelection.location.latitude ?? undefined,
-      longitude: locationSelection.location.longitude ?? undefined,
-    })
-
-    const payload = {
-      title: formData.title.toLowerCase(),
-      description: formData.description.toLowerCase(),
-      country: location.country,
-      state: location.state,
-      suburb: location.suburb,
-      postcode: location.postcode,
-      category: null,
-      exchange_type: formData.exchange_type,
-      contact_info: formData.contact_info || null,
-      anonymous: formData.anonymous,
-      terms_acknowledged: formData.termsAccepted,
-      image_ids: uploaded.map((img) => img.id),
-      image_urls: uploaded.map((img) => img.url),
-      thumbnail_id: thumbnailEntry.id,
-      location,
-      location_place_id: location.place_id ?? null,
-      location_label: location.label ?? null,
-      user_id: user.uid,
-    }
-
-    const listingRes = await fetch('/api/v1/listings/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    })
-
-    if (!listingRes.ok) {
-      const result = await listingRes.json()
-      setError(result.error || 'Failed to create listing.')
-    } else {
-      router.push('/listings')
+      if (!listingRes.ok) {
+        const result = await listingRes.json()
+        setError(result.error || 'Failed to create listing.')
+      } else {
+        router.push('/listings')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong while creating the listing.'
+      setError(message)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -195,7 +212,11 @@ export default function NewListingPage() {
     <AuthGuard>
       <div className="max-w-2xl mx-auto p-6">
         <h1 className="text-2xl font-semibold mb-4">Create New Listing</h1>
-        {error && <div className="bg-red-100 text-red-800 p-2 rounded mb-4">{error}</div>}
+        {error && (
+          <div ref={errorRef} className="bg-red-100 text-red-800 p-2 rounded mb-4" role="alert">
+            {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
 
           <input name="title" placeholder="Title" className="w-full p-2 border rounded" onChange={handleChange} required />
@@ -273,7 +294,13 @@ export default function NewListingPage() {
             </label>
           </div>
 
-          <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Create Listing</button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed w-full sm:w-auto min-h-[44px]"
+          >
+            {isSubmitting ? 'Creating…' : 'Create Listing'}
+          </button>
         </form>
       </div>
     </AuthGuard>
